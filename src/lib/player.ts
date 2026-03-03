@@ -3,9 +3,10 @@ import { resolveFfplay } from './ffmpeg';
 // ---------------------------------------------------------------------------
 // Player: ffplay -nodisp -autoexit -ss <offset> <file>
 //
-// Pause  : kill ffplay, record elapsed.
-// Resume : re-spawn ffplay with -ss <elapsed>.
-// Single process, no FIFO, no pipes — clean and simple.
+// Pause  : SIGSTOP ffplay, record elapsed. _handle kept alive.
+// Resume : SIGCONT ffplay, reset time-tracking origin. No re-spawn.
+// Seek   : SIGCONT + SIGTERM, re-spawn at target offset.
+// Volume : stored in _volume, applied at next spawn (seek/new track).
 // ---------------------------------------------------------------------------
 
 export type PlayerState = {
@@ -58,9 +59,8 @@ function startTicker(): void {
 
 function spawnFfplay(filePath: string, offsetSec: number): PlayHandle {
   const bin = resolveFfplay() ?? 'ffplay';
-  const vol = (_volume / 100).toFixed(4);
   const proc = Bun.spawn(
-    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), '-af', `volume=${vol}`, filePath],
+    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), '-volume', String(_volume), filePath],
     { stdout: 'ignore', stderr: 'ignore' },
   );
   return { proc, startedAt: Date.now(), startOffset: offsetSec };
@@ -82,8 +82,7 @@ function watchEnd(handle: PlayHandle): void {
 export async function play(filePath: string, duration: number, startOffset = 0): Promise<void> {
   stopTicker();
   if (_handle) {
-    if (_state && !_state.playing) { try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ } }
-    try { _handle.proc.kill(); } catch { /* ignore */ }
+    try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ }
     _handle = null;
   }
 
@@ -132,8 +131,7 @@ export async function seekBy(deltaSec: number): Promise<void> {
 
   stopTicker();
   if (_handle) {
-    // If paused via SIGSTOP, send SIGCONT first so the process is in a killable state
-    if (!wasPlaying) { try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ } }
+    try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
     try { _handle.proc.kill(); } catch { /* ignore */ }
     _handle = null;
   }
@@ -161,8 +159,7 @@ export async function togglePlayPause(): Promise<void> {
 export function stop(): void {
   stopTicker();
   if (_handle) {
-    // If paused via SIGSTOP, resume first so the process is killable
-    if (_state && !_state.playing) { try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ } }
+    try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
     try { _handle.proc.kill(); } catch { /* ignore */ }
     _handle = null;
   }
