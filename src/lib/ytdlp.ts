@@ -33,6 +33,9 @@ export type DownloadResult = {
 // Binary resolution + auto-download
 // ---------------------------------------------------------------------------
 
+const IS_WIN = process.platform === 'win32';
+const EXE = IS_WIN ? '.exe' : '';
+
 let _ytdlpBin: string | null | undefined;
 
 function isExecutable(p: string): boolean {
@@ -44,8 +47,19 @@ function isExecutable(p: string): boolean {
   }
 }
 
+/** Find a binary on PATH using `which` (Unix) or `where` (Windows). */
+function findOnPath(name: string): string | null {
+  const cmd = IS_WIN ? 'where' : 'which';
+  try {
+    const r = spawnSync(cmd, [name], { encoding: 'utf8' });
+    const cand = (r.stdout ?? '').split('\n')[0]?.trim() ?? '';
+    if (r.status === 0 && cand && isExecutable(cand)) return cand;
+  } catch { /* ignore */ }
+  return null;
+}
+
 function localBinPath(): string {
-  return path.join(getDataDir(), 'yt-dlp');
+  return path.join(getDataDir(), `yt-dlp${EXE}`);
 }
 
 export function resolveYtDlp(): string | null {
@@ -55,14 +69,20 @@ export function resolveYtDlp(): string | null {
   if (env && isExecutable(env)) { _ytdlpBin = env; return _ytdlpBin; }
 
   // Check PATH
-  try {
-    const r = spawnSync('which', ['yt-dlp'], { encoding: 'utf8' });
-    const cand = (r.stdout ?? '').trim();
-    if (r.status === 0 && cand && isExecutable(cand)) { _ytdlpBin = cand; return _ytdlpBin; }
-  } catch { /* ignore */ }
+  const onPath = findOnPath(`yt-dlp${EXE}`);
+  if (onPath) { _ytdlpBin = onPath; return _ytdlpBin; }
 
-  // Common brew location
-  for (const c of ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp']) {
+  // Common install locations by platform
+  const candidates: string[] = IS_WIN
+    ? [
+        path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'yt-dlp', 'yt-dlp.exe'),
+        'C:\\yt-dlp\\yt-dlp.exe',
+      ]
+    : process.platform === 'darwin'
+      ? ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp']
+      : ['/usr/bin/yt-dlp', '/usr/local/bin/yt-dlp'];
+
+  for (const c of candidates) {
     if (isExecutable(c)) { _ytdlpBin = c; return _ytdlpBin; }
   }
 
@@ -91,14 +111,25 @@ export async function ensureYtDlp(
     assets: { name: string; browser_download_url: string }[];
   };
 
-  // Pick the right binary for macOS (arm64 → darwin_aarch64, x64 → yt-dlp_macos)
-  const arch = process.arch; // 'arm64' or 'x64'
-  const wantName = arch === 'arm64' ? 'yt-dlp_macos' : 'yt-dlp_macos_legacy';
-  const asset = release.assets.find((a) => a.name === wantName)
-    ?? release.assets.find((a) => a.name === 'yt-dlp_macos')
-    ?? release.assets.find((a) => a.name === 'yt-dlp');
+  // Pick the right binary per platform/arch
+  const platform = process.platform;
+  const arch = process.arch;
 
-  if (!asset) throw new Error('Could not find a macOS yt-dlp binary in the release assets');
+  let wantName: string;
+  if (platform === 'win32') {
+    wantName = 'yt-dlp.exe';
+  } else if (platform === 'darwin') {
+    wantName = arch === 'arm64' ? 'yt-dlp_macos' : 'yt-dlp_macos_legacy';
+  } else {
+    // Linux
+    wantName = arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+  }
+
+  const asset = release.assets.find((a) => a.name === wantName)
+    ?? release.assets.find((a) => a.name === 'yt-dlp_macos')  // fallback macOS
+    ?? release.assets.find((a) => a.name === 'yt-dlp');         // generic fallback
+
+  if (!asset) throw new Error(`Could not find a ${platform} yt-dlp binary in the release assets`);
 
   onProgress?.(`Downloading ${asset.name}…`);
   const binRes = await fetch(asset.browser_download_url);
@@ -231,7 +262,7 @@ export async function downloadAudio(
         continue;
       }
       // --print after_move:filepath outputs the final path
-      if (t.startsWith('/') || t.startsWith('~')) {
+      if (t.startsWith('/') || t.startsWith('~') || /^[A-Za-z]:[/\\]/.test(t)) {
         finalPath = t;
       }
     }

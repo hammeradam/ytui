@@ -63,7 +63,7 @@ Player state could track a mode flag (`normal | shuffle | repeat-one | repeat-al
 ### ~~14. Mark already-downloaded tracks in search results~~ ✓
 `SearchView` has no way to know which results are already in the library. A visual indicator (e.g. a `✓` marker) on already-downloaded tracks would prevent redundant downloads and give useful context.
 
-### 15. Cross-platform support
+### ~~15. Cross-platform support~~ ✓
 The app is effectively macOS-only — `ffplay` is downloaded from `evermeet.cx` (an Intel macOS static binary), and binary resolution only checks Homebrew paths. Linux and Windows support would require platform detection in `src/lib/ffmpeg.ts` and `src/lib/ytdlp.ts`.
 
 ---

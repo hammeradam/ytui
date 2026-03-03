@@ -8,15 +8,21 @@ import { getDataDir } from '../db/index';
 //
 // Resolution order for each binary:
 //   1. Environment variable (FFMPEG_BIN / FFPLAY_BIN)
-//   2. PATH (via `which`)
-//   3. Common Homebrew locations
+//   2. PATH (via `which` on Unix, `where` on Windows)
+//   3. Common install locations (Homebrew on macOS, /usr/bin on Linux)
 //   4. Next to the other resolved binary (ffplay lives beside ffmpeg)
 //   5. Local cache in ~/.ytui/
 //
 // Auto-download sources:
-//   ffmpeg  — eugeneware/ffmpeg-static (GitHub) — arm64 + x64 static binaries
-//   ffplay  — evermeet.cx zip — Intel static, works on arm64 via Rosetta
+//   ffmpeg  — eugeneware/ffmpeg-static (GitHub) — macOS arm64/x64, Linux arm64/x64
+//             Windows: ffmpeg-static provides win32-x64
+//   ffplay  — macOS: evermeet.cx zip
+//             Linux: same static build as ffmpeg (bundled)
+//             Windows: gyan.dev essentials zip (includes ffplay.exe)
 // ---------------------------------------------------------------------------
+
+const IS_WIN = process.platform === 'win32';
+const EXE = IS_WIN ? '.exe' : '';
 
 let _ffmpegBin: string | null | undefined;
 let _ffplayBin: string | null | undefined;
@@ -25,12 +31,23 @@ function isExecutable(p: string): boolean {
   try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
 }
 
+/** Find a binary on PATH using `which` (Unix) or `where` (Windows). */
+function findOnPath(name: string): string | null {
+  const cmd = IS_WIN ? 'where' : 'which';
+  try {
+    const r = spawnSync(cmd, [name], { encoding: 'utf8' });
+    const cand = (r.stdout ?? '').split('\n')[0]?.trim() ?? '';
+    if (r.status === 0 && cand && isExecutable(cand)) return cand;
+  } catch { /* ignore */ }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // ffmpeg
 // ---------------------------------------------------------------------------
 
 function localFfmpegPath(): string {
-  return path.join(getDataDir(), 'ffmpeg');
+  return path.join(getDataDir(), `ffmpeg${EXE}`);
 }
 
 export function resolveFfmpeg(): string | null {
@@ -39,13 +56,20 @@ export function resolveFfmpeg(): string | null {
   const env = (process.env.FFMPEG_BIN ?? '').trim();
   if (env && isExecutable(env)) { _ffmpegBin = env; return _ffmpegBin; }
 
-  try {
-    const r = spawnSync('which', ['ffmpeg'], { encoding: 'utf8' });
-    const cand = (r.stdout ?? '').trim();
-    if (r.status === 0 && cand && isExecutable(cand)) { _ffmpegBin = cand; return _ffmpegBin; }
-  } catch { /* ignore */ }
+  const onPath = findOnPath(`ffmpeg${EXE}`);
+  if (onPath) { _ffmpegBin = onPath; return _ffmpegBin; }
 
-  for (const c of ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg']) {
+  // Common locations by platform
+  const candidates: string[] = IS_WIN
+    ? [
+        'C:\\ffmpeg\\bin\\ffmpeg.exe',
+        path.join(process.env.LOCALAPPDATA ?? '', 'ffmpeg', 'bin', 'ffmpeg.exe'),
+      ]
+    : process.platform === 'darwin'
+      ? ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg']
+      : ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/snap/bin/ffmpeg'];
+
+  for (const c of candidates) {
     if (isExecutable(c)) { _ffmpegBin = c; return _ffmpegBin; }
   }
 
@@ -64,6 +88,21 @@ export async function ensureFfmpeg(
 
   onProgress?.('ffmpeg not found — fetching static binary from GitHub…');
 
+  const platform = process.platform; // 'darwin' | 'linux' | 'win32'
+  const arch = process.arch;         // 'arm64' | 'x64'
+
+  // eugeneware/ffmpeg-static asset names follow the pattern:
+  //   ffmpeg-<platform>-<arch>   e.g. ffmpeg-darwin-arm64, ffmpeg-linux-x64
+  // Windows: ffmpeg-win32-x64 (no arm64 build available)
+  let wantName: string;
+  if (platform === 'win32') {
+    wantName = 'ffmpeg-win32-x64';
+  } else {
+    const plat = platform === 'darwin' ? 'darwin' : 'linux';
+    const ar = arch === 'arm64' ? 'arm64' : 'x64';
+    wantName = `ffmpeg-${plat}-${ar}`;
+  }
+
   const apiUrl = 'https://api.github.com/repos/eugeneware/ffmpeg-static/releases/latest';
   const res = await fetch(apiUrl, { headers: { 'User-Agent': 'ytui/0.1' } });
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
@@ -71,10 +110,9 @@ export async function ensureFfmpeg(
     assets: { name: string; browser_download_url: string }[];
   };
 
-  const wantName = process.arch === 'arm64' ? 'ffmpeg-darwin-arm64' : 'ffmpeg-darwin-x64';
   const asset = release.assets.find((a) => a.name === wantName)
-    ?? release.assets.find((a) => a.name.startsWith('ffmpeg-darwin'));
-  if (!asset) throw new Error('Could not find a macOS ffmpeg binary in the release assets');
+    ?? release.assets.find((a) => a.name.startsWith(`ffmpeg-${platform === 'win32' ? 'win32' : process.platform}`));
+  if (!asset) throw new Error(`Could not find a ${platform} ffmpeg binary in the release assets`);
 
   onProgress?.(`Downloading ${asset.name}…`);
   const binRes = await fetch(asset.browser_download_url);
@@ -95,7 +133,7 @@ export async function ensureFfmpeg(
 // ---------------------------------------------------------------------------
 
 function localFfplayPath(): string {
-  return path.join(getDataDir(), 'ffplay');
+  return path.join(getDataDir(), `ffplay${EXE}`);
 }
 
 export function resolveFfplay(): string | null {
@@ -104,20 +142,26 @@ export function resolveFfplay(): string | null {
   const env = (process.env.FFPLAY_BIN ?? '').trim();
   if (env && isExecutable(env)) { _ffplayBin = env; return _ffplayBin; }
 
-  try {
-    const r = spawnSync('which', ['ffplay'], { encoding: 'utf8' });
-    const cand = (r.stdout ?? '').trim();
-    if (r.status === 0 && cand && isExecutable(cand)) { _ffplayBin = cand; return _ffplayBin; }
-  } catch { /* ignore */ }
+  const onPath = findOnPath(`ffplay${EXE}`);
+  if (onPath) { _ffplayBin = onPath; return _ffplayBin; }
 
-  for (const c of ['/opt/homebrew/bin/ffplay', '/usr/local/bin/ffplay']) {
+  const candidates: string[] = IS_WIN
+    ? [
+        'C:\\ffmpeg\\bin\\ffplay.exe',
+        path.join(process.env.LOCALAPPDATA ?? '', 'ffmpeg', 'bin', 'ffplay.exe'),
+      ]
+    : process.platform === 'darwin'
+      ? ['/opt/homebrew/bin/ffplay', '/usr/local/bin/ffplay']
+      : ['/usr/bin/ffplay', '/usr/local/bin/ffplay'];
+
+  for (const c of candidates) {
     if (isExecutable(c)) { _ffplayBin = c; return _ffplayBin; }
   }
 
   // ffplay often lives next to ffmpeg
   const ffmpegBin = resolveFfmpeg();
   if (ffmpegBin) {
-    const sibling = path.join(path.dirname(ffmpegBin), 'ffplay');
+    const sibling = path.join(path.dirname(ffmpegBin), `ffplay${EXE}`);
     if (isExecutable(sibling)) { _ffplayBin = sibling; return _ffplayBin; }
   }
 
@@ -134,30 +178,75 @@ export async function ensureFfplay(
   const existing = resolveFfplay();
   if (existing) return existing;
 
-  // evermeet.cx provides static macOS binaries (Intel; runs via Rosetta on arm64)
-  onProgress?.('ffplay not found — fetching static binary from evermeet.cx…');
+  const platform = process.platform;
 
-  const zipUrl = 'https://evermeet.cx/ffmpeg/getrelease/ffplay/zip';
-  const zipRes = await fetch(zipUrl, {
-    headers: { 'User-Agent': 'ytui/0.1' },
-    redirect: 'follow',
-  });
-  if (!zipRes.ok) throw new Error(`ffplay download failed: ${zipRes.status}`);
+  if (platform === 'darwin') {
+    // evermeet.cx provides static macOS binaries (Intel; runs via Rosetta on arm64)
+    onProgress?.('ffplay not found — fetching static binary from evermeet.cx…');
 
-  const dest = localFfplayPath();
-  const dataDir = getDataDir();
+    const zipUrl = 'https://evermeet.cx/ffmpeg/getrelease/ffplay/zip';
+    const zipRes = await fetch(zipUrl, {
+      headers: { 'User-Agent': 'ytui/0.1' },
+      redirect: 'follow',
+    });
+    if (!zipRes.ok) throw new Error(`ffplay download failed: ${zipRes.status}`);
 
-  // Write zip to a temp file then unzip
-  const zipPath = dest + '.zip';
-  fs.writeFileSync(zipPath, Buffer.from(await zipRes.arrayBuffer()));
+    const dest = localFfplayPath();
+    const dataDir = getDataDir();
+    const zipPath = dest + '.zip';
+    fs.writeFileSync(zipPath, Buffer.from(await zipRes.arrayBuffer()));
 
-  const unzip = spawnSync('unzip', ['-o', '-j', zipPath, 'ffplay', '-d', dataDir], {
-    encoding: 'utf8',
-  });
-  fs.unlinkSync(zipPath);
+    const unzip = spawnSync('unzip', ['-o', '-j', zipPath, 'ffplay', '-d', dataDir], {
+      encoding: 'utf8',
+    });
+    fs.unlinkSync(zipPath);
+    if (unzip.status !== 0) throw new Error(`unzip failed: ${unzip.stderr}`);
+    fs.chmodSync(dest, 0o755);
+  } else if (platform === 'linux') {
+    // On Linux, ffplay is bundled with ffmpeg — ensure ffmpeg first, then look for sibling
+    onProgress?.('ffplay not found — ensuring ffmpeg (ffplay is bundled)…');
+    const ffmpegBin = await ensureFfmpeg(onProgress);
+    const sibling = path.join(path.dirname(ffmpegBin), 'ffplay');
+    if (!isExecutable(sibling)) {
+      // Some static ffmpeg builds don't bundle ffplay; try apt/package manager name
+      throw new Error(
+        'ffplay not found. On Linux, install it with: sudo apt install ffmpeg  (or your distro equivalent)',
+      );
+    }
+  } else if (platform === 'win32') {
+    // Download gyan.dev essentials zip which contains ffplay.exe
+    onProgress?.('ffplay not found — downloading ffmpeg essentials (includes ffplay) from gyan.dev…');
 
-  if (unzip.status !== 0) throw new Error(`unzip failed: ${unzip.stderr}`);
-  fs.chmodSync(dest, 0o755);
+    const releaseUrl = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip';
+    const zipRes = await fetch(releaseUrl, { headers: { 'User-Agent': 'ytui/0.1' }, redirect: 'follow' });
+    if (!zipRes.ok) throw new Error(`ffplay (gyan.dev) download failed: ${zipRes.status}`);
+
+    const dataDir = getDataDir();
+    const zipPath = path.join(dataDir, 'ffmpeg-essentials.zip');
+    fs.writeFileSync(zipPath, Buffer.from(await zipRes.arrayBuffer()));
+
+    // unzip using PowerShell (always available on Windows 10+)
+    const ps = spawnSync('powershell', [
+      '-NoProfile', '-Command',
+      `Expand-Archive -Force -Path "${zipPath}" -DestinationPath "${dataDir}"`,
+    ], { encoding: 'utf8' });
+    fs.unlinkSync(zipPath);
+    if (ps.status !== 0) throw new Error(`PowerShell Expand-Archive failed: ${ps.stderr}`);
+
+    // The zip contains a single top-level folder like ffmpeg-X.Y.Z-essentials_build\bin\
+    const extracted = fs.readdirSync(dataDir).find((d) => d.startsWith('ffmpeg-') && d.includes('essentials'));
+    if (!extracted) throw new Error('Could not find extracted ffmpeg folder');
+    const binDir = path.join(dataDir, extracted, 'bin');
+    for (const exe of ['ffmpeg.exe', 'ffplay.exe']) {
+      const src = path.join(binDir, exe);
+      const dst = path.join(dataDir, exe);
+      if (fs.existsSync(src)) fs.copyFileSync(src, dst);
+    }
+    // Clean up extracted folder
+    fs.rmSync(path.join(dataDir, extracted), { recursive: true, force: true });
+  } else {
+    throw new Error(`Unsupported platform: ${platform}. Install ffplay manually.`);
+  }
 
   _ffplayBin = undefined;
   const bin = resolveFfplay();
@@ -165,3 +254,4 @@ export async function ensureFfplay(
   onProgress?.('ffplay ready.');
   return bin;
 }
+

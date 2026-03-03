@@ -3,11 +3,15 @@ import { resolveFfplay } from './ffmpeg';
 // ---------------------------------------------------------------------------
 // Player: ffplay -nodisp -autoexit -ss <offset> <file>
 //
-// Pause  : SIGSTOP ffplay, record elapsed. _handle kept alive.
-// Resume : SIGCONT ffplay, reset time-tracking origin. No re-spawn.
-// Seek   : SIGCONT + SIGTERM, re-spawn at target offset.
+// Unix  — Pause  : SIGSTOP ffplay, record elapsed. _handle kept alive.
+//         Resume : SIGCONT ffplay, reset time-tracking origin. No re-spawn.
+// Windows — SIGSTOP/SIGCONT not supported; pause = kill + remember offset,
+//           resume = re-spawn from saved offset (same as seek).
+// Seek   : SIGCONT + SIGTERM (Unix) / kill (Windows), re-spawn at target offset.
 // Volume : stored in _volume, applied at next spawn (seek/new track).
 // ---------------------------------------------------------------------------
+
+const IS_WIN = process.platform === 'win32';
 
 export type PlayerState = {
   filePath: string;
@@ -100,14 +104,36 @@ export function pause(): void {
   stopTicker();
   _state.elapsed = _handle.startOffset + (Date.now() - _handle.startedAt) / 1000;
   _state.playing = false;
-  // SIGSTOP freezes the process in place — no kill, no re-spawn on resume
-  try { _handle.proc.kill('SIGSTOP'); } catch { /* ignore */ }
-  // _handle intentionally kept alive
+
+  if (IS_WIN) {
+    // Windows: no SIGSTOP — kill the process and remember offset for resume
+    try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ }
+    _handle = null;
+  } else {
+    // SIGSTOP freezes the process in place — no kill, no re-spawn on resume
+    try { _handle.proc.kill('SIGSTOP'); } catch { /* ignore */ }
+    // _handle intentionally kept alive
+  }
   emit();
 }
 
 export async function resume(): Promise<void> {
-  if (!_state || _state.playing || !_handle) return;
+  if (!_state || _state.playing) return;
+
+  if (IS_WIN) {
+    // Windows: process was killed on pause — re-spawn from saved offset
+    if (_handle) { try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ } }
+    const handle = spawnFfplay(_state.filePath, _state.elapsed);
+    _handle = handle;
+    _state.pid = handle.proc.pid ?? null;
+    _state.playing = true;
+    emit();
+    startTicker();
+    watchEnd(handle);
+    return;
+  }
+
+  if (!_handle) return;
   // SIGCONT unfreezes the existing process — no re-spawn, no seek gap
   try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
   // Reset time-tracking origin so the ticker continues from _state.elapsed
@@ -131,7 +157,9 @@ export async function seekBy(deltaSec: number): Promise<void> {
 
   stopTicker();
   if (_handle) {
-    try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+    if (!IS_WIN) {
+      try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+    }
     try { _handle.proc.kill(); } catch { /* ignore */ }
     _handle = null;
   }
@@ -159,7 +187,9 @@ export async function togglePlayPause(): Promise<void> {
 export function stop(): void {
   stopTicker();
   if (_handle) {
-    try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+    if (!IS_WIN) {
+      try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+    }
     try { _handle.proc.kill(); } catch { /* ignore */ }
     _handle = null;
   }
