@@ -41,6 +41,10 @@ export function App(): React.ReactElement {
   const setPlayerState = useStore((s) => s.setPlayer);
   const reloadTracks = useStore((s) => s.reloadTracks);
   const reloadPlaylists = useStore((s) => s.reloadPlaylists);
+  const playNext = useStore((s) => s.playNext);
+  const playPrev = useStore((s) => s.playPrev);
+  const toggleShuffle = useStore((s) => s.toggleShuffle);
+  const cycleRepeat = useStore((s) => s.cycleRepeat);
 
   // Wire up downloader → store
   useEffect(() => {
@@ -60,11 +64,13 @@ export function App(): React.ReactElement {
     setPlayerCallbacks(
       (state) => setPlayerState(state),
       () => {
-        // Track ended naturally — update store
-        setPlayerState(player.getPlayerState());
+        // Track ended naturally — advance to next track
+        void playNext().then((advanced) => {
+          if (!advanced) setPlayerState(player.getPlayerState());
+        });
       },
     );
-  }, [setPlayerState]);
+  }, [setPlayerState, playNext]);
 
   // Initial data load
   useEffect(() => {
@@ -80,7 +86,10 @@ export function App(): React.ReactElement {
     if (key.rightArrow) { void player.seekBy(5).then(() => setPlayerState(player.getPlayerState())); return; }
     if (input === 'u') { void player.setVolume(player.getVolume() - 5).then(() => setPlayerState(player.getPlayerState())); return; }
     if (input === 'i') { void player.setVolume(player.getVolume() + 5).then(() => setPlayerState(player.getPlayerState())); return; }
-    if (input === 'n' && activeView !== 'search') { player.stop(); return; }
+    if (input === 'n') { void playNext(); return; }
+    if (input === 'p') { void playPrev(); return; }
+    if (input === 's') { toggleShuffle(); return; }
+    if (input === 'r') { cycleRepeat(); return; }
     const view = VIEW_KEYS[input];
     if (view) { setActiveView(view === activeView && view === 'help' ? 'search' : view); return; }
   });

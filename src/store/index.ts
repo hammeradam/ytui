@@ -7,6 +7,7 @@ import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
 import type { PlayerState } from '../lib/player';
+import * as player from '../lib/player';
 
 // ---------------------------------------------------------------------------
 // View types
@@ -17,6 +18,8 @@ export type ActiveView = 'search' | 'library' | 'playlists' | 'queue' | 'help';
 // ---------------------------------------------------------------------------
 // Store shape
 // ---------------------------------------------------------------------------
+
+export type RepeatMode = 'none' | 'one' | 'all';
 
 export type AppState = {
   // Search
@@ -33,6 +36,12 @@ export type AppState = {
 
   // Player
   player: PlayerState | null;
+
+  // Play queue
+  queue: Track[];       // ordered list of tracks to play
+  queueIndex: number;   // index of currently-playing track in queue (-1 = none)
+  repeatMode: RepeatMode;
+  shuffle: boolean;
 
   // Playlists
   playlists: Playlist[];
@@ -58,6 +67,16 @@ export type AppState = {
 
   // Actions — player
   setPlayer: (s: PlayerState | null) => void;
+
+  // Actions — play queue
+  /** Start playing `track` within the given `context` list; auto-advances on track end. */
+  playFromContext: (track: Track, context: Track[]) => Promise<void>;
+  /** Advance to next track (respects shuffle / repeat). Returns true if a track was started. */
+  playNext: () => Promise<boolean>;
+  /** Go back to previous track. */
+  playPrev: () => Promise<void>;
+  toggleShuffle: () => void;
+  cycleRepeat: () => void;
 
   // Actions — playlists
   reloadPlaylists: () => Promise<void>;
@@ -93,6 +112,12 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Player
   player: null,
+
+  // Play queue
+  queue: [],
+  queueIndex: -1,
+  repeatMode: 'none' as RepeatMode,
+  shuffle: false,
 
   // Playlists
   playlists: [],
@@ -135,6 +160,78 @@ export const useStore = create<AppState>((set, get) => ({
 
   // --- Player actions ---
   setPlayer: (s) => set({ player: s }),
+
+  // --- Play queue actions ---
+  playFromContext: async (track, context) => {
+    const idx = context.findIndex((t) => t.id === track.id);
+    set({ queue: context, queueIndex: idx < 0 ? 0 : idx });
+    await player.play(track.filePath, track.duration);
+    set({ player: player.getPlayerState() });
+  },
+
+  playNext: async () => {
+    const { queue, queueIndex, repeatMode, shuffle } = get();
+    if (queue.length === 0) return false;
+
+    if (repeatMode === 'one') {
+      // Replay same track
+      const t = queue[queueIndex];
+      if (!t) return false;
+      await player.play(t.filePath, t.duration);
+      set({ player: player.getPlayerState() });
+      return true;
+    }
+
+    let nextIdx: number;
+    if (shuffle) {
+      // Pick a random index different from current (unless only 1 track)
+      if (queue.length === 1) {
+        nextIdx = 0;
+      } else {
+        do { nextIdx = Math.floor(Math.random() * queue.length); }
+        while (nextIdx === queueIndex);
+      }
+    } else {
+      nextIdx = queueIndex + 1;
+    }
+
+    if (nextIdx >= queue.length) {
+      if (repeatMode === 'all') {
+        nextIdx = 0;
+      } else {
+        // End of queue — stop
+        set({ queueIndex: -1, player: null });
+        return false;
+      }
+    }
+
+    const t = queue[nextIdx]!;
+    set({ queueIndex: nextIdx });
+    await player.play(t.filePath, t.duration);
+    set({ player: player.getPlayerState() });
+    return true;
+  },
+
+  playPrev: async () => {
+    const { queue, queueIndex } = get();
+    if (queue.length === 0) return;
+    const prevIdx = Math.max(0, queueIndex - 1);
+    const t = queue[prevIdx];
+    if (!t) return;
+    set({ queueIndex: prevIdx });
+    await player.play(t.filePath, t.duration);
+    set({ player: player.getPlayerState() });
+  },
+
+  toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),
+
+  cycleRepeat: () =>
+    set((s) => ({
+      repeatMode:
+        s.repeatMode === 'none' ? 'one'
+        : s.repeatMode === 'one' ? 'all'
+        : 'none',
+    })),
 
   // --- Playlist actions ---
   reloadPlaylists: async () => {

@@ -42,7 +42,7 @@ Points to `./data/ytui.db` (project-relative) but the app opens `~/.ytui/ytui.db
 
 ## UX / Feature Improvements
 
-### 8. Play queue and auto-advance
+### ~~8. Play queue and auto-advance~~ ✓
 `n` currently just stops playback. A proper next-track concept would require a play queue. Tracks from a playlist or search results could be enqueued and auto-advanced on track end — `_onTrackEnd` is already wired in `src/lib/player.ts` for exactly this purpose.
 
 ### ~~9. Delete track from library~~ ✓
@@ -54,7 +54,7 @@ Add a `d` handler in `LibraryView` that removes the track from the DB and delete
 ### ~~11. Volume control~~ ✓
 `ffplay` supports a `-volume 0–100` flag. Adding `[` / `]` keybindings to adjust volume and persisting the value across track changes would make the player significantly more usable.
 
-### 12. Shuffle and repeat modes
+### ~~12. Shuffle and repeat modes~~ ✓
 Player state could track a mode flag (`normal | shuffle | repeat-one | repeat-all`) toggled with `r` and `s` keybindings — standard music player conventions.
 
 ### ~~13. Track metadata in PlayerBar~~ ✓

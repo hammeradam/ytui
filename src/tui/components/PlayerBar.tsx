@@ -13,6 +13,10 @@ function progressBar(elapsed: number, duration: number, width = 30): string {
 export function PlayerBar(): React.ReactElement {
   const ps = useStore((s) => s.player);
   const tracks = useStore((s) => s.tracks);
+  const queue = useStore((s) => s.queue);
+  const queueIndex = useStore((s) => s.queueIndex);
+  const repeatMode = useStore((s) => s.repeatMode);
+  const shuffle = useStore((s) => s.shuffle);
 
   if (!ps) {
     return (
@@ -32,8 +36,9 @@ export function PlayerBar(): React.ReactElement {
     ? `${trackMeta.title.slice(0, 40)} · ${trackMeta.channel.slice(0, 20)}`
     : ps.filePath.split('/').pop()?.replace(/\.[^.]+$/, '').slice(0, 40) ?? ps.filePath;
 
-  // Refresh player state from module (tracks elapsed via interval)
-  // The store is updated via callbacks set in App.tsx
+  const repeatLabel = repeatMode === 'none' ? '' : repeatMode === 'one' ? ' [R:1]' : ' [R:all]';
+  const shuffleLabel = shuffle ? ' [S]' : '';
+  const queueLabel = queue.length > 0 ? ` [${queueIndex + 1}/${queue.length}]` : '';
 
   return (
     <Box borderStyle="single" borderColor={ps.playing ? 'green' : 'yellow'} paddingX={1} gap={1}>
@@ -41,8 +46,8 @@ export function PlayerBar(): React.ReactElement {
       <Text bold>{title}</Text>
       <Text color="white">{bar}</Text>
       <Text color="cyan">{elapsed}/{total}</Text>
-      <Text color="white">vol:{ps.volume}%</Text>
-      <Text color="white">Space:pause  u:vol-  i:vol+  n:stop  q:quit</Text>
+      <Text color="white">vol:{ps.volume}%{repeatLabel}{shuffleLabel}{queueLabel}</Text>
+      <Text color="white">Space:pause  ←→:seek  p:prev  n:next  s:shuffle  r:repeat  u/i:vol  q:quit</Text>
     </Box>
   );
 }

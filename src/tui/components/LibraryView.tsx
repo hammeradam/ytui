@@ -3,7 +3,6 @@ import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
 import { formatDuration } from '../../lib/ytdlp';
-import * as player from '../../lib/player';
 import { ScrollList } from './ScrollList';
 import type { Track } from '../../db/schema';
 
@@ -18,9 +17,9 @@ export function LibraryView({ height }: Props): React.ReactElement {
   const tracks = useStore((s) => s.tracks);
   const playlists = useStore((s) => s.playlists);
   const setStatusMsg = useStore((s) => s.setStatusMsg);
-  const setPlayer = useStore((s) => s.setPlayer);
   const addTrackToPlaylist = useStore((s) => s.addTrackToPlaylist);
   const deleteTrack = useStore((s) => s.deleteTrack);
+  const playFromContext = useStore((s) => s.playFromContext);
 
   const selectedTrack: Track | undefined = tracks[selectedIdx];
 
@@ -47,10 +46,9 @@ export function LibraryView({ height }: Props): React.ReactElement {
 
       if (key.return) {
         if (selectedTrack) {
-          void player.play(selectedTrack.filePath, selectedTrack.duration).then(() => {
-            setPlayer(player.getPlayerState());
-          });
-          setStatusMsg(`Playing: ${selectedTrack.title}`);
+          void playFromContext(selectedTrack, tracks).then(() =>
+            setStatusMsg(`Playing: ${selectedTrack.title}`),
+          );
         }
         return;
       }
