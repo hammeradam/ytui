@@ -84,8 +84,8 @@ export function App(): React.ReactElement {
     if (input === ' ') { void player.togglePlayPause().then(() => setPlayerState(player.getPlayerState())); return; }
     if (key.leftArrow) { void player.seekBy(-5).then(() => setPlayerState(player.getPlayerState())); return; }
     if (key.rightArrow) { void player.seekBy(5).then(() => setPlayerState(player.getPlayerState())); return; }
-    if (input === 'u') { player.setVolume(player.getVolume() - 5); setPlayerState(player.getPlayerState()); return; }
-    if (input === 'i') { player.setVolume(player.getVolume() + 5); setPlayerState(player.getPlayerState()); return; }
+    if (input === 'u') { void player.setVolume(player.getVolume() - 5).then(() => setPlayerState(player.getPlayerState())); return; }
+    if (input === 'i') { void player.setVolume(player.getVolume() + 5).then(() => setPlayerState(player.getPlayerState())); return; }
     if (input === 'n') { void playNext(); return; }
     if (input === 'p') { void playPrev(); return; }
     if (input === 's') { toggleShuffle(); return; }

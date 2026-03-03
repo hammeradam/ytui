@@ -197,13 +197,24 @@ export function stop(): void {
   emit();
 }
 
-/** Adjust volume (0-100). Updates the UI immediately; volume takes effect on
- *  the next spawn (seek, next track, or new play). */
-export function setVolume(vol: number): void {
+/** Adjust volume (0-100). Immediately re-spawns ffplay at the current position. */
+export async function setVolume(vol: number): Promise<void> {
   _volume = Math.max(0, Math.min(100, Math.round(vol)));
   if (!_state) return;
   _state.volume = _volume;
-  emit();
+
+  if (_state.playing) {
+    await seekBy(0);
+  } else if (_handle) {
+    // Paused with a live (SIGSTOP'd) handle — kill it so resume() re-spawns
+    // with the new volume instead of SIGCONT'ing the old process
+    if (!IS_WIN) {
+      try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+    }
+    try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ }
+    _handle = null;
+    emit();
+  }
 }
 
 export function getVolume(): number {
