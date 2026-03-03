@@ -197,12 +197,13 @@ export function stop(): void {
   emit();
 }
 
-/** Adjust volume (0-100). Takes effect on the next play/resume/seek. */
+/** Adjust volume (0-100). Immediately re-spawns ffplay at the current position with the new volume. */
 export async function setVolume(vol: number): Promise<void> {
   _volume = Math.max(0, Math.min(100, Math.round(vol)));
   if (_state) {
     _state.volume = _volume;
-    emit();
+    // Re-spawn ffplay at the current position so the new volume takes effect immediately
+    await seekBy(0);
   }
 }
 
