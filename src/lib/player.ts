@@ -58,8 +58,9 @@ function startTicker(): void {
 
 function spawnFfplay(filePath: string, offsetSec: number): PlayHandle {
   const bin = resolveFfplay() ?? 'ffplay';
+  const vol = (_volume / 100).toFixed(4);
   const proc = Bun.spawn(
-    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), '-volume', String(_volume), filePath],
+    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), '-af', `volume=${vol}`, filePath],
     { stdout: 'ignore', stderr: 'ignore' },
   );
   return { proc, startedAt: Date.now(), startOffset: offsetSec };
@@ -80,7 +81,11 @@ function watchEnd(handle: PlayHandle): void {
 
 export async function play(filePath: string, duration: number, startOffset = 0): Promise<void> {
   stopTicker();
-  if (_handle) { try { _handle.proc.kill(); } catch { /* ignore */ } _handle = null; }
+  if (_handle) {
+    if (_state && !_state.playing) { try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ } }
+    try { _handle.proc.kill(); } catch { /* ignore */ }
+    _handle = null;
+  }
 
   _state = { filePath, playing: true, elapsed: startOffset, duration, volume: _volume, pid: null };
   const handle = spawnFfplay(filePath, startOffset);
@@ -96,21 +101,23 @@ export function pause(): void {
   stopTicker();
   _state.elapsed = _handle.startOffset + (Date.now() - _handle.startedAt) / 1000;
   _state.playing = false;
-  _state.pid = null;
-  try { _handle.proc.kill(); } catch { /* ignore */ }
-  _handle = null;
+  // SIGSTOP freezes the process in place — no kill, no re-spawn on resume
+  try { _handle.proc.kill('SIGSTOP'); } catch { /* ignore */ }
+  // _handle intentionally kept alive
   emit();
 }
 
 export async function resume(): Promise<void> {
-  if (!_state || _state.playing) return;
-  const handle = spawnFfplay(_state.filePath, _state.elapsed);
-  _handle = handle;
-  _state.pid = handle.proc.pid ?? null;
+  if (!_state || _state.playing || !_handle) return;
+  // SIGCONT unfreezes the existing process — no re-spawn, no seek gap
+  try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+  // Reset time-tracking origin so the ticker continues from _state.elapsed
+  _handle.startedAt = Date.now();
+  _handle.startOffset = _state.elapsed;
   _state.playing = true;
   emit();
   startTicker();
-  watchEnd(handle);
+  // watchEnd is already registered from the original spawn
 }
 
 export async function seekBy(deltaSec: number): Promise<void> {
@@ -124,7 +131,12 @@ export async function seekBy(deltaSec: number): Promise<void> {
   _state.elapsed = target;
 
   stopTicker();
-  if (_handle) { try { _handle.proc.kill(); } catch { /* ignore */ } _handle = null; }
+  if (_handle) {
+    // If paused via SIGSTOP, send SIGCONT first so the process is in a killable state
+    if (!wasPlaying) { try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ } }
+    try { _handle.proc.kill(); } catch { /* ignore */ }
+    _handle = null;
+  }
 
   if (wasPlaying) {
     const handle = spawnFfplay(_state.filePath, target);
@@ -148,7 +160,12 @@ export async function togglePlayPause(): Promise<void> {
 
 export function stop(): void {
   stopTicker();
-  if (_handle) { try { _handle.proc.kill(); } catch { /* ignore */ } _handle = null; }
+  if (_handle) {
+    // If paused via SIGSTOP, resume first so the process is killable
+    if (_state && !_state.playing) { try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ } }
+    try { _handle.proc.kill(); } catch { /* ignore */ }
+    _handle = null;
+  }
   _state = null;
   emit();
 }
