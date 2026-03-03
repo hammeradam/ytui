@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { resolveFfplay } from './ffmpeg';
 
 // ---------------------------------------------------------------------------
@@ -154,13 +153,4 @@ export function stop(): void {
 
 export function getPlayerState(): PlayerState | null {
   return _state ? { ..._state } : null;
-}
-
-export function isAfplayAvailable(): boolean {
-  try {
-    const r = spawnSync('which', ['ffplay'], { encoding: 'utf8' });
-    return r.status === 0 && Boolean((r.stdout ?? '').trim());
-  } catch {
-    return false;
-  }
 }

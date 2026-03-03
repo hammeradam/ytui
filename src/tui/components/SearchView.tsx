@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
@@ -20,7 +20,6 @@ export function SearchView({ height }: Props): React.ReactElement {
   const setLoading = useStore((s) => s.setSearchLoading);
   const setError = useStore((s) => s.setSearchError);
   const setStatusMsg = useStore((s) => s.setStatusMsg);
-  const downloadQueue = useStore((s) => s.downloadQueue);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -79,9 +78,6 @@ export function SearchView({ height }: Props): React.ReactElement {
       }
     },
   );
-
-  // Sync download queue to store (callbacks are set in App)
-  useEffect(() => {}, [downloadQueue]);
 
   const listHeight = height - 3; // subtract input + padding
 

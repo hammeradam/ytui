@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { Box, useInput } from 'ink';
 
 type Props<T> = {
@@ -42,9 +42,6 @@ export function ScrollList<T>({
       onSelect(items.length - 1);
     }
   }, { isActive });
-
-  // Force re-render when selectedIndex changes to recalculate scroll
-  useEffect(() => {}, [selectedIndex]);
 
   const visible = items.slice(scrollOffsetRef.current, scrollOffsetRef.current + height);
 
