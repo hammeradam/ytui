@@ -1,91 +1,57 @@
 import { useEffect } from "react";
 import { render, Box, Text, useInput } from "ink";
-import { usePlayerStore } from "./store/mpv-store";
-import { createClient } from './lib/mpv';
+import { connectMpv } from './lib/mpv';
+import { commands } from './lib/commands';
+import {
+  usePlayerStore,
+  useTitle,
+  useIsPlaying,
+  useProgressPercent,
+  useFormattedTime,
+} from './store/mpv-store';
 
-// const proc = Bun.spawn([
-//   "./src/bin/mpv.app/Contents/MacOS/mpv",
-//   "--idle",
-//   "--input-ipc-server=/tmp/mpv.sock"
-// ]);
+// Spawn mpv and connect IPC
+Bun.spawnSync(['rm', '-f', '/tmp/mpv.sock']);
+const proc = Bun.spawn([
+  '/opt/homebrew/bin/mpv',
+  '--idle=yes',
+  '--no-video',
+  '--input-ipc-server=/tmp/mpv.sock',
+], { stdout: 'ignore', stderr: 'ignore' });
 
-// console.log(proc)
-
-const client = await createClient();
+// Retry until socket is ready
+for (let i = 0; i < 50; i++) {
+  try { await connectMpv(); break; } catch { await Bun.sleep(100); }
+}
 
 const Player = () => {
-  const { title, pause, playbackTime, duration } = usePlayerStore();
+  const title      = useTitle();
+  const isPlaying  = useIsPlaying();
+  const pct        = useProgressPercent();
+  const timeStr    = useFormattedTime();
+  const volume     = usePlayerStore((s) => s.volume);
 
-  const progress =
-    duration > 0
-      ? Math.floor((playbackTime / duration) * 20)
-      : 0;
-
-  const bar =
-    "█".repeat(progress) +
-    "░".repeat(20 - progress);
+  const BAR_WIDTH = 20;
+  const filled = Math.round(pct * BAR_WIDTH);
+  const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
 
   useEffect(() => {
-    client.loadFile('./src/audio/test.m4a');
-
-    // const timeout = setTimeout(() => {
-    //   console.log('resume')
-    //   client.resume();
-    // }, 10_000);
-
-    // return () => clearTimeout(timeout);
+    commands.loadFile('./src/audio/test.m4a');
   }, []);
 
   useInput((input) => {
-    if (input === ' ') {
-      if (pause) {
-        client.resume();
-      } else {
-        client.pause();
-      }
-    }
+    if (input === ' ') commands.toggle();
+    if (input === 'q') { proc.kill(); process.exit(0); }
   });
 
   return (
-    <Box flexDirection="column">
-      <Text>
-        {pause ? "⏸ Paused" : "▶ Playing"}
-      </Text>
-
-      <Text>{title || "No track loaded"}</Text>
-
-      <Text>
-        [{bar}] {Math.floor(playbackTime)}s
-      </Text>
-
-      <Box marginTop={1} gap={2}>
-        <Text
-          bold
-          color="green"
-        >
-          [ ▶ Play ]
-        </Text>
-        <Text
-          bold
-          color="yellow"
-        >
-          [ ⏸ Pause ]
-        </Text>
-      </Box>
-
-      <Text dimColor>Press Space to toggle play/pause</Text>
+    <Box flexDirection="column" gap={1}>
+      <Text>{isPlaying ? '▶ Playing' : '⏸ Paused'}</Text>
+      <Text bold>{title ?? 'No track loaded'}</Text>
+      <Text>[{bar}] {timeStr}</Text>
+      <Text dimColor>vol: {volume}  ·  Space: toggle  ·  q: quit</Text>
     </Box>
   );
 };
 
 render(<Player />);
-
-process.on('SIGINT', () => {
-  // proc.kill();
-  process.exit();
-});
-
-process.on('SIGTERM', () => {
-  // proc.kill();
-  process.exit();
-});

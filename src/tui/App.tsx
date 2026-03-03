@@ -38,7 +38,6 @@ export function App(): React.ReactElement {
   const setActiveView = useStore((s) => s.setActiveView);
   const statusMsg = useStore((s) => s.statusMsg);
   const setDownloadQueue = useStore((s) => s.setDownloadQueue);
-  const setPlayerState = useStore((s) => s.setPlayer);
   const reloadTracks = useStore((s) => s.reloadTracks);
   const reloadPlaylists = useStore((s) => s.reloadPlaylists);
   const playNext = useStore((s) => s.playNext);
@@ -59,18 +58,13 @@ export function App(): React.ReactElement {
     });
   }, [setDownloadQueue, reloadTracks]);
 
-  // Wire up player → store
+  // Wire up player track-end → advance queue
   useEffect(() => {
     setPlayerCallbacks(
-      (state) => setPlayerState(state),
-      () => {
-        // Track ended naturally — advance to next track
-        void playNext().then((advanced) => {
-          if (!advanced) setPlayerState(player.getPlayerState());
-        });
-      },
+      () => {}, // state is managed reactively by mpv-store
+      () => void playNext(),
     );
-  }, [setPlayerState, playNext]);
+  }, [playNext]);
 
   // Initial data load
   useEffect(() => {
@@ -81,11 +75,11 @@ export function App(): React.ReactElement {
   // Global keybindings
   useInput((input, key) => {
     if (input === 'q' && !key.ctrl) { player.stop(); exit(); return; }
-    if (input === ' ') { void player.togglePlayPause().then(() => setPlayerState(player.getPlayerState())); return; }
-    if (key.leftArrow) { void player.seekBy(-5).then(() => setPlayerState(player.getPlayerState())); return; }
-    if (key.rightArrow) { void player.seekBy(5).then(() => setPlayerState(player.getPlayerState())); return; }
-    if (input === 'u') { player.setVolume(player.getVolume() - 5); setPlayerState(player.getPlayerState()); return; }
-    if (input === 'i') { player.setVolume(player.getVolume() + 5); setPlayerState(player.getPlayerState()); return; }
+    if (input === ' ') { void player.togglePlayPause(); return; }
+    if (key.leftArrow) { void player.seekBy(-5); return; }
+    if (key.rightArrow) { void player.seekBy(5); return; }
+    if (input === 'u') { player.setVolume(player.getVolume() - 5); return; }
+    if (input === 'i') { player.setVolume(player.getVolume() + 5); return; }
     if (input === 'n') { void playNext(); return; }
     if (input === 'p') { void playPrev(); return; }
     if (input === 's') { toggleShuffle(); return; }

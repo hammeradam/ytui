@@ -6,7 +6,6 @@ import { getDb, schema } from '../db/index';
 import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
-import type { PlayerState } from '../lib/mpv-player';
 import * as player from '../lib/mpv-player';
 
 // ---------------------------------------------------------------------------
@@ -33,9 +32,6 @@ export type AppState = {
 
   // Downloads
   downloadQueue: DownloadJob[];
-
-  // Player
-  player: PlayerState | null;
 
   // Play queue
   queue: Track[];       // ordered list of tracks to play
@@ -64,9 +60,6 @@ export type AppState = {
 
   // Actions — downloads
   setDownloadQueue: (q: DownloadJob[]) => void;
-
-  // Actions — player
-  setPlayer: (s: PlayerState | null) => void;
 
   // Actions — play queue
   /** Start playing `track` within the given `context` list; auto-advances on track end. */
@@ -109,9 +102,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Downloads
   downloadQueue: [],
-
-  // Player
-  player: null,
 
   // Play queue
   queue: [],
@@ -158,15 +148,11 @@ export const useStore = create<AppState>((set, get) => ({
   // --- Download actions ---
   setDownloadQueue: (q) => set({ downloadQueue: q }),
 
-  // --- Player actions ---
-  setPlayer: (s) => set({ player: s }),
-
   // --- Play queue actions ---
   playFromContext: async (track, context) => {
     const idx = context.findIndex((t) => t.id === track.id);
     set({ queue: context, queueIndex: idx < 0 ? 0 : idx });
     await player.play(track.filePath, track.duration);
-    set({ player: player.getPlayerState() });
   },
 
   playNext: async () => {
@@ -178,7 +164,6 @@ export const useStore = create<AppState>((set, get) => ({
       const t = queue[queueIndex];
       if (!t) return false;
       await player.play(t.filePath, t.duration);
-      set({ player: player.getPlayerState() });
       return true;
     }
 
@@ -200,7 +185,7 @@ export const useStore = create<AppState>((set, get) => ({
         nextIdx = 0;
       } else {
         // End of queue — stop
-        set({ queueIndex: -1, player: null });
+        set({ queueIndex: -1 });
         return false;
       }
     }
@@ -208,7 +193,6 @@ export const useStore = create<AppState>((set, get) => ({
     const t = queue[nextIdx]!;
     set({ queueIndex: nextIdx });
     await player.play(t.filePath, t.duration);
-    set({ player: player.getPlayerState() });
     return true;
   },
 
@@ -220,7 +204,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (!t) return;
     set({ queueIndex: prevIdx });
     await player.play(t.filePath, t.duration);
-    set({ player: player.getPlayerState() });
   },
 
   toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),

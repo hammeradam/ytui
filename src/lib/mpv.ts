@@ -1,120 +1,59 @@
-import { usePlayerStore } from '../store/mpv-store';
+/**
+ * mpv.ts — raw socket layer.
+ *
+ * Responsibilities:
+ *   1. Connect to the mpv IPC socket.
+ *   2. Register the send function with the commands module.
+ *   3. Route incoming messages to the adapter.
+ *
+ * Nothing here touches the store or business logic.
+ */
 
-type ClientOptions = {
-  onTrackEnd?: () => void;
-};
+import { registerSend } from './commands';
+import { handleRawMessage } from './mpv-adapter';
 
-export const createClient = async (opts: ClientOptions = {}) => {
-  const socketPath = '/tmp/mpv.sock';
+export async function connectMpv(socketPath = '/tmp/mpv.sock'): Promise<() => void> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   let buffer = '';
-  let socket: any;
+  let sock: any;
 
-  const client = await Bun.connect({
+  const connection = await Bun.connect({
     unix: socketPath,
     socket: {
-      open(sock) {
-        socket = sock;
+      open(s) {
+        sock = s;
+        registerSend((command, request_id) => {
+          s.write(encoder.encode(JSON.stringify({ command, request_id }) + '\n'));
+        });
         observeProperties();
       },
 
-      data(sock, data) {
+      data(_s, data) {
         buffer += decoder.decode(data);
-
         const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
+        buffer = lines.pop() ?? '';
         for (const line of lines) {
           if (!line.trim()) continue;
-
-          const message = JSON.parse(line);
-          handleMessage(message);
+          try {
+            handleRawMessage(JSON.parse(line));
+          } catch { /* malformed JSON — ignore */ }
         }
       },
     },
   });
 
-  function send(command: any[], request_id?: number) {
-    socket.write(
-      encoder.encode(JSON.stringify({ command, request_id }) + '\n'),
-    );
-  }
-
-  function loadFile(filePath: string) {
-    send(['loadfile', filePath]);
-  }
-
-  function pause() {
-    send(['set_property', 'pause', true]);
-  }
-
-  // Resume
-  function resume() {
-    send(['set_property', 'pause', false]);
-  }
-
-  // Next track
-  function nextTrack() {
-    send(['playlist-next']);
-  }
-
-  // Set volume
-  function setVolume(volume: number) {
-    send(['set_property', 'volume', volume]);
-  }
-
-  // Seek forward 10 seconds
-  function seek(seconds: number) {
-    send(['seek', seconds, 'relative']);
-  }
-
-  function seekAbsolute(seconds: number) {
-    send(['seek', seconds, 'absolute']);
-  }
-
-  function stop() {
-    send(['stop']);
-  }
-
   function observeProperties() {
-    send(['observe_property', 1, 'media-title']);
-    send(['observe_property', 2, 'pause']);
-    send(['observe_property', 3, 'playback-time']);
-    send(['observe_property', 4, 'duration']);
+    const observe = (id: number, prop: string) =>
+      sock?.write(encoder.encode(JSON.stringify({ command: ['observe_property', id, prop] }) + '\n'));
+    observe(1, 'media-title');
+    observe(2, 'pause');
+    observe(3, 'playback-time');
+    observe(4, 'duration');
+    observe(5, 'volume');
   }
 
-  function handleMessage(msg: any) {
-    if (msg.event === 'property-change') {
-      const store = usePlayerStore.getState();
-      switch (msg.name) {
-        case 'media-title':
-          store.setTitle(msg.data ?? '');
-          break;
-        case 'pause':
-          store.setPause(!!msg.data);
-          break;
-        case 'playback-time':
-          store.setPlaybackTime(msg.data ?? 0);
-          break;
-        case 'duration':
-          store.setDuration(msg.data ?? 0);
-          break;
-      }
-    } else if (msg.event === 'end-file' && msg.reason === 'eof') {
-      opts.onTrackEnd?.();
-    }
-  }
+  return () => connection.end();
+}
 
-  return {
-    loadFile,
-    pause,
-    resume,
-    nextTrack,
-    seek,
-    seekAbsolute,
-    stop,
-    setVolume,
-  };
-};
