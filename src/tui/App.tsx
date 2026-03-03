@@ -78,8 +78,8 @@ export function App(): React.ReactElement {
     if (input === ' ') { void player.togglePlayPause().then(() => setPlayerState(player.getPlayerState())); return; }
     if (key.leftArrow) { void player.seekBy(-5).then(() => setPlayerState(player.getPlayerState())); return; }
     if (key.rightArrow) { void player.seekBy(5).then(() => setPlayerState(player.getPlayerState())); return; }
-    if (input === '[') { void player.setVolume(player.getVolume() - 5).then(() => setPlayerState(player.getPlayerState())); return; }
-    if (input === ']') { void player.setVolume(player.getVolume() + 5).then(() => setPlayerState(player.getPlayerState())); return; }
+    if (input === 'u') { void player.setVolume(player.getVolume() - 5).then(() => setPlayerState(player.getPlayerState())); return; }
+    if (input === 'i') { void player.setVolume(player.getVolume() + 5).then(() => setPlayerState(player.getPlayerState())); return; }
     if (input === 'n' && activeView !== 'search') { player.stop(); return; }
     const view = VIEW_KEYS[input];
     if (view) { setActiveView(view === activeView && view === 'help' ? 'search' : view); return; }
