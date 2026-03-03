@@ -64,7 +64,7 @@ function startTicker(): void {
 function spawnFfplay(filePath: string, offsetSec: number): PlayHandle {
   const bin = resolveFfplay() ?? 'ffplay';
   const proc = Bun.spawn(
-    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), '-volume', String(_volume), filePath],
+    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), filePath],
     { stdout: 'ignore', stderr: 'ignore' },
   );
   return { proc, startedAt: Date.now(), startOffset: offsetSec };
@@ -197,23 +197,15 @@ export function stop(): void {
   emit();
 }
 
-/** Adjust volume (0-100). Immediately re-spawns ffplay at the current position. */
-export async function setVolume(vol: number): Promise<void> {
+/** Adjust volume (0-100). On macOS uses osascript to set system volume
+ *  instantly with no gap. On other platforms defers to next spawn. */
+export function setVolume(vol: number): void {
   _volume = Math.max(0, Math.min(100, Math.round(vol)));
-  if (!_state) return;
-  _state.volume = _volume;
+  if (_state) { _state.volume = _volume; emit(); }
 
-  if (_state.playing) {
-    await seekBy(0);
-  } else if (_handle) {
-    // Paused with a live (SIGSTOP'd) handle — kill it so resume() re-spawns
-    // with the new volume instead of SIGCONT'ing the old process
-    if (!IS_WIN) {
-      try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
-    }
-    try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ }
-    _handle = null;
-    emit();
+  if (process.platform === 'darwin') {
+    Bun.spawn(['osascript', '-e', `set volume output volume ${_volume}`],
+      { stdout: 'ignore', stderr: 'ignore' });
   }
 }
 
