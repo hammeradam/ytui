@@ -7,7 +7,7 @@ import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
 import { loadConfig, type Config } from '../lib/config';
-import * as player from '../lib/mpv-player';
+import { player } from '../lib/mpv-player';
 
 // ---------------------------------------------------------------------------
 // View types
@@ -160,7 +160,7 @@ export const useStore = create<AppState>((set, get) => ({
   playFromContext: async (track, context) => {
     const idx = context.findIndex((t) => t.id === track.id);
     set({ queue: context, queueIndex: idx < 0 ? 0 : idx });
-    await player.play(track.filePath, track.duration);
+    await player.play(track.filePath);
   },
 
   playNext: async () => {
@@ -171,7 +171,7 @@ export const useStore = create<AppState>((set, get) => ({
       // Replay same track
       const t = queue[queueIndex];
       if (!t) return false;
-      await player.play(t.filePath, t.duration);
+      await player.play(t.filePath);
       return true;
     }
 
@@ -200,7 +200,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     const t = queue[nextIdx]!;
     set({ queueIndex: nextIdx });
-    await player.play(t.filePath, t.duration);
+    await player.play(t.filePath);
     return true;
   },
 
@@ -211,7 +211,7 @@ export const useStore = create<AppState>((set, get) => ({
     const t = queue[prevIdx];
     if (!t) return;
     set({ queueIndex: prevIdx });
-    await player.play(t.filePath, t.duration);
+    await player.play(t.filePath);
   },
 
   toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),

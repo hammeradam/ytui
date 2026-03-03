@@ -8,7 +8,7 @@ import * as schema from './schema';
 
 export type Db = ReturnType<typeof openDb>;
 
-let _db: Db | undefined;
+let db: Db | undefined;
 
 export function getDataDir(): string {
   const dir = path.join(process.env.HOME ?? '~', '.ytui');
@@ -69,8 +69,8 @@ export function openDb(): ReturnType<typeof drizzle<typeof schema>> {
 }
 
 export function getDb(): Db {
-  if (!_db) _db = openDb();
-  return _db;
+  if (!db) db = openDb();
+  return db;
 }
 
 export { schema };

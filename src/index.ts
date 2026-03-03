@@ -1,12 +1,12 @@
 import { ensureYtDlp } from './lib/ytdlp';
 import { startTui } from './tui/index';
 import { openDb } from './db/index';
-import { init as initMpv } from './lib/mpv-player';
+import { player } from './lib/mpv-player';
 
 async function main(): Promise<void> {
   openDb();
   await ensureYtDlp((msg) => process.stderr.write(msg + '\n'));
-  await initMpv();
+  await player.init();
   startTui();
 }
 

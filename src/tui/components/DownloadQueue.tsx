@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
-import { retryJob } from '../../lib/downloader';
+import { downloader } from '../../lib/downloader';
 import type { DownloadJob } from '../../lib/downloader';
 
 function statusColor(s: DownloadJob['status']): string {
@@ -26,7 +26,7 @@ export function DownloadQueue(): React.ReactElement {
     if (key.upArrow || _input === 'k') setSelectedIdx((i) => Math.max(i - 1, 0));
     if (_input === 'r') {
       const job = queue[selectedIdx];
-      if (job) retryJob(job.id);
+      if (job) downloader.retryJob(job.id);
     }
   });
 

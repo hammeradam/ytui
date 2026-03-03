@@ -15,6 +15,31 @@ import { getDataDir } from '../db/index';
 export type AudioFormat  = 'm4a' | 'opus' | 'best';
 export type AudioQuality = 'best' | '256k' | '192k' | '128k';
 
+/**
+ * An action that can be bound to a hotkey.
+ * Special keys are stored as words: 'space', 'left', 'right', 'up', 'down', 'enter', 'escape'.
+ * Regular printable characters are stored as-is (e.g. 'q', '1', '?').
+ */
+export type HotkeyAction =
+  | 'quit'
+  | 'playPause'
+  | 'seekBack'
+  | 'seekForward'
+  | 'volumeDown'
+  | 'volumeUp'
+  | 'nextTrack'
+  | 'prevTrack'
+  | 'toggleShuffle'
+  | 'cycleRepeat'
+  | 'viewSearch'
+  | 'viewLibrary'
+  | 'viewPlaylists'
+  | 'viewQueue'
+  | 'viewSettings'
+  | 'viewHelp';
+
+export type Hotkeys = Record<HotkeyAction, string>;
+
 export type Config = {
   /** Default volume when mpv starts (0–100). */
   defaultVolume: number;
@@ -28,6 +53,27 @@ export type Config = {
   mpvSocketPath: string;
   /** Directory where audio files are saved. Empty = default (~/.ytui/music). */
   downloadDir: string;
+  /** Keyboard shortcuts for each action. */
+  hotkeys: Hotkeys;
+};
+
+export const DEFAULT_HOTKEYS: Hotkeys = {
+  quit:          'q',
+  playPause:     'space',
+  seekBack:      'left',
+  seekForward:   'right',
+  volumeDown:    'u',
+  volumeUp:      'i',
+  nextTrack:     'n',
+  prevTrack:     'p',
+  toggleShuffle: 's',
+  cycleRepeat:   'r',
+  viewSearch:    '1',
+  viewLibrary:   '2',
+  viewPlaylists: '3',
+  viewQueue:     '4',
+  viewSettings:  '5',
+  viewHelp:      '?',
 };
 
 export const CONFIG_DEFAULTS: Config = {
@@ -37,7 +83,60 @@ export const CONFIG_DEFAULTS: Config = {
   searchResultsLimit:  10,
   mpvSocketPath:       '/tmp/mpv.sock',
   downloadDir:         '',
+  hotkeys:             { ...DEFAULT_HOTKEYS },
 };
+
+// ---------------------------------------------------------------------------
+// Hotkey helpers
+// ---------------------------------------------------------------------------
+
+/** Returns a user-friendly label for a stored hotkey string. */
+export function displayHotkey(hk: string): string {
+  switch (hk) {
+    case 'space':  return 'Space';
+    case 'left':   return '←';
+    case 'right':  return '→';
+    case 'up':     return '↑';
+    case 'down':   return '↓';
+    case 'enter':  return 'Enter';
+    case 'escape': return 'Esc';
+    default:       return hk;
+  }
+}
+
+/** Normalise an ink useInput event to the stored hotkey format. */
+export function captureHotkey(
+  input: string,
+  key: { leftArrow?: boolean; rightArrow?: boolean; upArrow?: boolean; downArrow?: boolean; return?: boolean; escape?: boolean },
+): string | null {
+  if (key.leftArrow)  return 'left';
+  if (key.rightArrow) return 'right';
+  if (key.upArrow)    return 'up';
+  if (key.downArrow)  return 'down';
+  if (key.return)     return 'enter';
+  if (key.escape)     return 'escape'; // handled specially – means cancel
+  if (input === ' ')  return 'space';
+  if (input && input.length === 1) return input;
+  return null;
+}
+
+/** Returns true if an ink useInput event matches a stored hotkey string. */
+export function matchHotkey(
+  hk: string,
+  input: string,
+  key: { leftArrow?: boolean; rightArrow?: boolean; upArrow?: boolean; downArrow?: boolean; return?: boolean; escape?: boolean },
+): boolean {
+  switch (hk) {
+    case 'space':  return input === ' ';
+    case 'left':   return !!key.leftArrow;
+    case 'right':  return !!key.rightArrow;
+    case 'up':     return !!key.upArrow;
+    case 'down':   return !!key.downArrow;
+    case 'enter':  return !!key.return;
+    case 'escape': return !!key.escape;
+    default:       return input === hk;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Read / write
@@ -47,26 +146,42 @@ function configPath(): string {
   return path.join(getDataDir(), 'config.json');
 }
 
-let _cache: Config | null = null;
+let configCache: Config | null = null;
 
 export function loadConfig(): Config {
-  if (_cache) return _cache;
+  if (configCache) return configCache;
+
   try {
     const raw = fs.readFileSync(configPath(), 'utf8');
-    _cache = { ...CONFIG_DEFAULTS, ...JSON.parse(raw) } as Config;
+    const parsed = JSON.parse(raw) as Partial<Config>;
+
+    configCache = {
+      ...CONFIG_DEFAULTS,
+      ...parsed,
+      // Deep-merge hotkeys so adding new actions doesn't wipe existing ones
+      hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys ?? {}) },
+    };
   } catch {
-    _cache = { ...CONFIG_DEFAULTS };
+    configCache = { ...CONFIG_DEFAULTS };
   }
-  return _cache;
+
+  return configCache;
 }
 
 export function saveConfig(config: Config): void {
-  _cache = { ...config };
+  configCache = { ...config };
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + '\n', 'utf8');
 }
 
 export function updateConfig<K extends keyof Config>(key: K, value: Config[K]): Config {
   const next = { ...loadConfig(), [key]: value };
+  saveConfig(next);
+  return next;
+}
+
+export function updateHotkey(action: HotkeyAction, hotkey: string): Config {
+  const current = loadConfig();
+  const next = { ...current, hotkeys: { ...current.hotkeys, [action]: hotkey } };
   saveConfig(next);
   return next;
 }

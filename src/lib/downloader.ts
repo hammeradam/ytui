@@ -27,161 +27,152 @@ type DownloaderCallbacks = {
 };
 
 // ---------------------------------------------------------------------------
-// State
+// Downloader
 // ---------------------------------------------------------------------------
 
-const _queue: DownloadJob[] = [];
-let _running = false;
-let _callbacks: DownloaderCallbacks | null = null;
+class Downloader {
+  private queue:     DownloadJob[]          = [];
+  private running:   boolean                = false;
+  private callbacks: DownloaderCallbacks | null = null;
 
-function emit(): void {
-  _callbacks?.onUpdate([..._queue]);
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-export function setDownloaderCallbacks(cb: DownloaderCallbacks): void {
-  _callbacks = cb;
-}
-
-/** Add a video to the download queue. No-op if already queued/downloading/done. */
-export function enqueue(item: {
-  id: string;
-  title: string;
-  channel: string;
-  duration: number;
-}): void {
-  const existing = _queue.find((j) => j.id === item.id);
-  if (existing) return;
-
-  _queue.push({
-    id: item.id,
-    title: item.title,
-    channel: item.channel,
-    duration: item.duration,
-    status: 'pending',
-    progress: 0,
-    speed: '',
-    eta: '',
-    error: '',
-    addedAt: Date.now(),
-  });
-  emit();
-  void tick();
-}
-
-/** Add by URL or video ID — fetches metadata first if needed. */
-export async function enqueueUrl(urlOrId: string): Promise<void> {
-  const id = extractVideoId(urlOrId);
-  if (id && _queue.find((j) => j.id === id)) return;
-
-  // Check DB first to avoid re-download
-  if (id) {
-    const db = getDb();
-    const existing = await db
-      .select()
-      .from(schema.tracks)
-      .where(eq(schema.tracks.id, id))
-      .limit(1);
-    if (existing.length > 0) return; // already downloaded
+  private emit(): void {
+    this.callbacks?.onUpdate([...this.queue]);
   }
 
-  const info = await fetchVideoInfo(urlOrId);
-  enqueue(info);
-}
-
-export function getQueue(): DownloadJob[] {
-  return [..._queue];
-}
-
-export function removeFromQueue(videoId: string): void {
-  const idx = _queue.findIndex((j) => j.id === videoId && j.status !== 'downloading');
-  if (idx >= 0) {
-    _queue.splice(idx, 1);
-    emit();
+  setCallbacks(cb: DownloaderCallbacks): void {
+    this.callbacks = cb;
   }
-}
 
-/** Reset an errored job back to pending so it will be retried. */
-export function retryJob(videoId: string): void {
-  const job = _queue.find((j) => j.id === videoId && j.status === 'error');
-  if (!job) return;
-  job.status = 'pending';
-  job.progress = 0;
-  job.speed = '';
-  job.eta = '';
-  job.error = '';
-  emit();
-  void tick();
-}
+  /** Add a video to the download queue. No-op if already queued/downloading/done. */
+  enqueue(item: { id: string; title: string; channel: string; duration: number }): void {
+    if (this.queue.find((j) => j.id === item.id)) return;
 
-// ---------------------------------------------------------------------------
-// Internal worker
-// ---------------------------------------------------------------------------
-
-function extractVideoId(urlOrId: string): string | null {
-  const s = urlOrId.trim();
-  const m = s.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
-  if (m) return m[1]!;
-  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
-  return null;
-}
-
-async function tick(): Promise<void> {
-  if (_running) return;
-  const next = _queue.find((j) => j.status === 'pending');
-  if (!next) return;
-
-  _running = true;
-  next.status = 'downloading';
-  emit();
-
-  try {
-    const result = await downloadAudio(next.id, (p: DownloadProgress) => {
-      next.progress = p.percent;
-      next.speed = p.speed;
-      next.eta = p.eta;
-      emit();
+    this.queue.push({
+      ...item,
+      status: 'pending',
+      progress: 0,
+      speed: '',
+      eta: '',
+      error: '',
+      addedAt: Date.now(),
     });
+    this.emit();
+    void this.tick();
+  }
 
-    // Persist to DB
-    const db = getDb();
-    await db
-      .insert(schema.tracks)
-      .values({
-        id: next.id,
-        title: next.title,
-        channel: next.channel,
-        duration: next.duration,
-        filePath: result.filePath,
-        fileExt: result.fileExt,
-        thumbnailUrl: '',
-        downloadedAt: new Date().toISOString(),
-        fileSize: result.fileSize,
-      })
-      .onConflictDoUpdate({
-        target: schema.tracks.id,
-        set: {
-          filePath: result.filePath,
-          fileExt: result.fileExt,
-          fileSize: result.fileSize,
-          downloadedAt: new Date().toISOString(),
-        },
+  /** Add by URL or video ID — fetches metadata first if needed. */
+  async enqueueUrl(urlOrId: string): Promise<void> {
+    const id = this.extractVideoId(urlOrId);
+    if (id && this.queue.find((j) => j.id === id)) return;
+
+    // Check DB first to avoid re-download
+    if (id) {
+      const db = getDb();
+      const existing = await db
+        .select()
+        .from(schema.tracks)
+        .where(eq(schema.tracks.id, id))
+        .limit(1);
+      if (existing.length > 0) return; // already downloaded
+    }
+
+    const info = await fetchVideoInfo(urlOrId);
+    this.enqueue(info);
+  }
+
+  getQueue(): DownloadJob[] {
+    return [...this.queue];
+  }
+
+  removeFromQueue(videoId: string): void {
+    const idx = this.queue.findIndex((j) => j.id === videoId && j.status !== 'downloading');
+    if (idx >= 0) {
+      this.queue.splice(idx, 1);
+      this.emit();
+    }
+  }
+
+  /** Reset an errored job back to pending so it will be retried. */
+  retryJob(videoId: string): void {
+    const job = this.queue.find((j) => j.id === videoId && j.status === 'error');
+    if (!job) return;
+    job.status = 'pending';
+    job.progress = 0;
+    job.speed = '';
+    job.eta = '';
+    job.error = '';
+    this.emit();
+    void this.tick();
+  }
+
+  private extractVideoId(urlOrId: string): string | null {
+    const s = urlOrId.trim();
+    const m = s.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1]!;
+    if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+    return null;
+  }
+
+  private async tick(): Promise<void> {
+    if (this.running) return;
+    const next = this.queue.find((j) => j.status === 'pending');
+    if (!next) return;
+
+    this.running = true;
+    next.status = 'downloading';
+    this.emit();
+
+    try {
+      const result = await downloadAudio(next.id, (p: DownloadProgress) => {
+        next.progress = p.percent;
+        next.speed = p.speed;
+        next.eta = p.eta;
+        this.emit();
       });
 
-    next.status = 'done';
-    next.progress = 100;
-    next.speed = '';
-    next.eta = '';
-  } catch (e: unknown) {
-    next.status = 'error';
-    next.error = String((e as Error)?.message ?? e);
-  }
+      // Persist to DB
+      const db = getDb();
+      await db
+        .insert(schema.tracks)
+        .values({
+          id: next.id,
+          title: next.title,
+          channel: next.channel,
+          duration: next.duration,
+          filePath: result.filePath,
+          fileExt: result.fileExt,
+          thumbnailUrl: '',
+          downloadedAt: new Date().toISOString(),
+          fileSize: result.fileSize,
+        })
+        .onConflictDoUpdate({
+          target: schema.tracks.id,
+          set: {
+            filePath: result.filePath,
+            fileExt: result.fileExt,
+            fileSize: result.fileSize,
+            downloadedAt: new Date().toISOString(),
+          },
+        });
 
-  _running = false;
-  emit();
-  // Process next pending job
-  void tick();
+      next.status = 'done';
+      next.progress = 100;
+      next.speed = '';
+      next.eta = '';
+    } catch (e: unknown) {
+      next.status = 'error';
+      next.error = String((e as Error)?.message ?? e);
+    }
+
+    this.running = false;
+    this.emit();
+    // Process next pending job
+    void this.tick();
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Singleton
+// ---------------------------------------------------------------------------
+
+export const downloader = new Downloader();

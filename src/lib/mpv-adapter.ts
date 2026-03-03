@@ -39,7 +39,7 @@ function emit(event: DomainEvent): void {
 // Throttle: only emit Progress when the integer second changes
 // ---------------------------------------------------------------------------
 
-let _lastSecond = -1;
+let lastSecond = -1;
 
 // ---------------------------------------------------------------------------
 // Raw message → domain event translation
@@ -56,8 +56,8 @@ export function handleRawMessage(msg: any): void {
         break;
       case 'playback-time': {
         const sec = Math.floor(msg.data ?? 0);
-        if (sec !== _lastSecond) {
-          _lastSecond = sec;
+        if (sec !== lastSecond) {
+          lastSecond = sec;
           emit({ type: 'Progress', time: sec });
         }
         break;
@@ -78,7 +78,7 @@ export function handleRawMessage(msg: any): void {
 
   if (msg.event === 'end-file') {
     if (msg.reason === 'eof') {
-      _lastSecond = -1;
+      lastSecond = -1;
       emit({ type: 'TrackEnded' });
     } else if (msg.reason === 'error') {
       emit({ type: 'TrackError', reason: msg.file_error ?? 'unknown' });

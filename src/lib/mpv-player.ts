@@ -1,25 +1,19 @@
 /**
- * mpv-player.ts — orchestration layer.
+ * mpv-player.ts — mpv process, IPC socket, and playback API.
  *
  * Stack:
- *   mpv process
- *     └─ mpv.ts          (raw socket)
- *          └─ mpv-adapter.ts  (domain events)
- *               └─ mpv-store.ts  (state machine)
- *                    └─ mpv-player.ts  (app API + queue bridge)
- *
- * This module:
- *   • Spawns the mpv process and connects the IPC socket.
- *   • Exposes play/pause/resume/seek/stop/setVolume for the app.
+ *   MpvPlayer
+ *     ├─ spawns the mpv process
+ *     ├─ connects + owns the IPC socket        (was mpv.ts)
+ *     ├─ sends raw IPC commands                (was commands.ts / mpvIpc)
+ *     └─ subscribes to mpv-adapter events for track-end callbacks
  */
 
-import { connectMpv } from './mpv';
-import { commands } from './commands';
-import { onEvent } from './mpv-adapter';
+import { handleRawMessage, onEvent } from './mpv-adapter';
 import { loadConfig } from './config';
 
 // ---------------------------------------------------------------------------
-// Types (kept for store/index.ts queue actions)
+// Types
 // ---------------------------------------------------------------------------
 
 export type PlayerState = {
@@ -32,119 +26,150 @@ export type PlayerState = {
 };
 
 // ---------------------------------------------------------------------------
-// Module-level state
+// Player
 // ---------------------------------------------------------------------------
 
-let _proc: ReturnType<typeof Bun.spawn> | null = null;
-let _filePath = '';
-let _volume = 100;
-let _onTrackEnd: (() => void) | null = null;
+class MpvPlayer {
+  private process: ReturnType<typeof Bun.spawn> | null = null;
+  private send: (command: unknown[]) => void = () => {};
+  private volume = 100;
+  private onTrackEnd: (() => void) | null = null;
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
-function resolveMpvBin(): string {
-  const candidates = [
-    '/opt/homebrew/bin/mpv',
-    '/usr/local/bin/mpv',
-    './src/bin/mpv.app/Contents/MacOS/mpv',
-    'mpv',
-  ];
-  for (const p of candidates) {
-    if (Bun.spawnSync(['test', '-x', p]).exitCode === 0) return p;
-  }
-  return 'mpv';
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-export function setPlayerCallbacks(
-  _onStateChange: (s: PlayerState | null) => void,
-  onTrackEnd: () => void,
-): void {
-  _onTrackEnd = onTrackEnd;
-}
-
-/**
- * Spawn mpv and connect the IPC socket.  Must be awaited before the TUI starts.
- */
-export async function init(): Promise<void> {
-  const cfg = loadConfig();
-  _volume = cfg.defaultVolume;
-  const socketPath = cfg.mpvSocketPath;
-
-  // Remove stale socket
-  Bun.spawnSync(['rm', '-f', socketPath]);
-
-  _proc = Bun.spawn(
-    [resolveMpvBin(), '--idle=yes', '--no-video', `--input-ipc-server=${socketPath}`],
-    { stdout: 'ignore', stderr: 'ignore' },
-  );
-
-  // Retry connection — socket file takes a moment to appear
-  let connected = false;
-  for (let i = 0; i < 50 && !connected; i++) {
-    try {
-      await connectMpv(socketPath);
-      connected = true;
-    } catch {
-      await new Promise<void>((r) => setTimeout(r, 100));
+  private resolveMpvBin(): string {
+    const candidates = [
+      '/opt/homebrew/bin/mpv',
+      '/usr/local/bin/mpv',
+      './src/bin/mpv.app/Contents/MacOS/mpv',
+      'mpv',
+    ];
+    for (const p of candidates) {
+      if (Bun.spawnSync(['test', '-x', p]).exitCode === 0) return p;
     }
+    return 'mpv';
   }
-  if (!connected) throw new Error('mpv: could not connect to IPC socket at ' + socketPath);
 
-  // Forward state machine changes to the app store
-  // (no bridge needed: mpv-store is the source of truth and is read directly by UI)
+  private ipc(command: unknown[]): void {
+    this.send(command);
+  }
 
-  // Handle track-end: notify app store so it can advance the queue
-  onEvent((event) => {
-    if (event.type === 'TrackEnded') {
-      _filePath = '';
-      _onTrackEnd?.();
+  private async connectSocket(socketPath: string): Promise<void> {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sock: any;
+
+    await Bun.connect({
+      unix: socketPath,
+      socket: {
+        open: (s) => {
+          sock = s;
+          this.send = (cmd) => s.write(encoder.encode(JSON.stringify({ command: cmd }) + '\n'));
+          // Observe properties for domain event translation
+          const observe = (id: number, prop: string) =>
+            s.write(encoder.encode(JSON.stringify({ command: ['observe_property', id, prop] }) + '\n'));
+          observe(1, 'media-title');
+          observe(2, 'pause');
+          observe(3, 'playback-time');
+          observe(4, 'duration');
+          observe(5, 'volume');
+        },
+        data: (_s, data) => {
+          buffer += decoder.decode(data);
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try { handleRawMessage(JSON.parse(line)); } catch { /* malformed JSON */ }
+          }
+        },
+      },
+    });
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+  setCallbacks(onTrackEnd: () => void): void {
+    this.onTrackEnd = onTrackEnd;
+  }
+
+  /** Spawn mpv and connect the IPC socket. Must be awaited before the TUI starts. */
+  async init(): Promise<void> {
+    const cfg = loadConfig();
+    this.volume = cfg.defaultVolume;
+    const socketPath = cfg.mpvSocketPath;
+
+    Bun.spawnSync(['rm', '-f', socketPath]);
+
+    this.process = Bun.spawn(
+      [this.resolveMpvBin(), '--idle=yes', '--no-video', `--input-ipc-server=${socketPath}`],
+      { stdout: 'ignore', stderr: 'ignore' },
+    );
+
+    let connected = false;
+    for (let i = 0; i < 50 && !connected; i++) {
+      try {
+        await this.connectSocket(socketPath);
+        connected = true;
+      } catch {
+        await new Promise<void>((r) => setTimeout(r, 100));
+      }
     }
-  });
-}
+    if (!connected) throw new Error('mpv: could not connect to IPC socket at ' + socketPath);
 
-export async function play(filePath: string, _duration: number, startOffset = 0): Promise<void> {
-  _filePath = filePath;
-  commands.loadFile(filePath);
-  if (startOffset > 0) {
-    await new Promise<void>((r) => setTimeout(r, 300));
-    commands.seekAbsolute(startOffset);
+    onEvent((event) => {
+      if (event.type === 'TrackEnded') this.onTrackEnd?.();
+    });
   }
-  commands.setVolume(_volume);
+
+  /** Stop playback and kill the mpv process. */
+  destroy(): void {
+    this.ipc(['stop']);
+    this.process?.kill();
+    this.process = null;
+  }
+
+  // ── Playback API ──────────────────────────────────────────────────────────
+
+  play(filePath: string): void {
+    this.ipc(['loadfile', filePath]);
+    this.ipc(['set_property', 'volume', this.volume]);
+  }
+
+  pause(): void {
+    this.ipc(['set_property', 'pause', true]);
+  }
+
+  resume(): void {
+    this.ipc(['set_property', 'pause', false]);
+  }
+
+  togglePlayPause(): void {
+    this.ipc(['cycle', 'pause']);
+  }
+
+  seekBy(deltaSec: number): void {
+    this.ipc(['seek', deltaSec, 'relative']);
+  }
+
+  stop(): void {
+    this.ipc(['stop']);
+  }
+
+  setVolume(vol: number): void {
+    this.volume = Math.max(0, Math.min(100, Math.round(vol)));
+    this.ipc(['set_property', 'volume', this.volume]);
+  }
+
+  getVolume(): number {
+    return this.volume;
+  }
 }
 
-export function pause(): void {
-  commands.pause();
-}
+// ---------------------------------------------------------------------------
+// Singleton
+// ---------------------------------------------------------------------------
 
-export async function resume(): Promise<void> {
-  commands.resume();
-}
-
-export async function seekBy(deltaSec: number): Promise<void> {
-  commands.seek(deltaSec);
-}
-
-export async function togglePlayPause(): Promise<void> {
-  commands.toggle();
-}
-
-export function stop(): void {
-  _filePath = '';
-  commands.stop();
-}
-
-export function setVolume(vol: number): void {
-  _volume = Math.max(0, Math.min(100, Math.round(vol)));
-  commands.setVolume(_volume);
-}
-
-export function getVolume(): number {
-  return _volume;
-}
+export const player = new MpvPlayer();
 

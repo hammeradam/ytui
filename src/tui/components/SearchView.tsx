@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
 import { searchYouTube, formatDuration } from '../../lib/ytdlp';
-import { enqueue, enqueueUrl } from '../../lib/downloader';
+import { downloader } from '../../lib/downloader';
 import { ScrollList } from './ScrollList';
 
 type Props = { height: number };
@@ -53,7 +53,7 @@ export function SearchView({ height }: Props): React.ReactElement {
           if (q.includes('youtu')) {
             setInputFocused(false);
             setStatusMsg('Fetching video info…');
-            void enqueueUrl(q).then(() => setStatusMsg('Queued!')).catch((e: unknown) => setStatusMsg(`Error: ${String((e as Error)?.message ?? e)}`));
+            void downloader.enqueueUrl(q).then(() => setStatusMsg('Queued!')).catch((e: unknown) => setStatusMsg(`Error: ${String((e as Error)?.message ?? e)}`));
           } else {
             void doSearch(q);
             setInputFocused(false);
@@ -80,7 +80,7 @@ export function SearchView({ height }: Props): React.ReactElement {
       if (key.return) {
         const item = results[selectedIdx];
         if (item) {
-          enqueue(item);
+          downloader.enqueue(item);
           setStatusMsg(`Queued: ${item.title}`);
         }
         return;
