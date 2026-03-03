@@ -42,7 +42,7 @@ export function PlayerBar(): React.ReactElement {
       <Text color="white">{bar}</Text>
       <Text color="cyan">{elapsed}/{total}</Text>
       <Text color="white">vol:{ps.volume}%</Text>
-      <Text color="white">Space:pause  u:vol-  i:vol+  n:stop  q:quit</Text>
+      <Text color="white">Space:pause  u:vol-  i:vol+  n:stop  q:quit  (vol applies on pause/resume)</Text>
     </Box>
   );
 }

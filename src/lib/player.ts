@@ -153,24 +153,11 @@ export function stop(): void {
   emit();
 }
 
-/** Adjust volume (0-100) and immediately re-spawn ffplay if a track is playing. */
+/** Adjust volume (0-100). Takes effect on the next play/resume/seek. */
 export async function setVolume(vol: number): Promise<void> {
   _volume = Math.max(0, Math.min(100, Math.round(vol)));
-  if (!_state) return;
-  _state.volume = _volume;
-  if (_state.playing && _handle) {
-    // Snapshot elapsed before killing
-    _state.elapsed = _handle.startOffset + (Date.now() - _handle.startedAt) / 1000;
-    stopTicker();
-    try { _handle.proc.kill(); } catch { /* ignore */ }
-    _handle = null;
-    const handle = spawnFfplay(_state.filePath, _state.elapsed);
-    _handle = handle;
-    _state.pid = handle.proc.pid ?? null;
-    emit();
-    startTicker();
-    watchEnd(handle);
-  } else {
+  if (_state) {
+    _state.volume = _volume;
     emit();
   }
 }
