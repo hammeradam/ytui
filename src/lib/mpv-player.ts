@@ -16,6 +16,7 @@
 import { connectMpv } from './mpv';
 import { commands } from './commands';
 import { onEvent } from './mpv-adapter';
+import { loadConfig } from './config';
 
 // ---------------------------------------------------------------------------
 // Types (kept for store/index.ts queue actions)
@@ -33,8 +34,6 @@ export type PlayerState = {
 // ---------------------------------------------------------------------------
 // Module-level state
 // ---------------------------------------------------------------------------
-
-const SOCKET_PATH = '/tmp/mpv.sock';
 
 let _proc: ReturnType<typeof Bun.spawn> | null = null;
 let _filePath = '';
@@ -73,11 +72,15 @@ export function setPlayerCallbacks(
  * Spawn mpv and connect the IPC socket.  Must be awaited before the TUI starts.
  */
 export async function init(): Promise<void> {
+  const cfg = loadConfig();
+  _volume = cfg.defaultVolume;
+  const socketPath = cfg.mpvSocketPath;
+
   // Remove stale socket
-  Bun.spawnSync(['rm', '-f', SOCKET_PATH]);
+  Bun.spawnSync(['rm', '-f', socketPath]);
 
   _proc = Bun.spawn(
-    [resolveMpvBin(), '--idle=yes', '--no-video', `--input-ipc-server=${SOCKET_PATH}`],
+    [resolveMpvBin(), '--idle=yes', '--no-video', `--input-ipc-server=${socketPath}`],
     { stdout: 'ignore', stderr: 'ignore' },
   );
 
@@ -85,13 +88,13 @@ export async function init(): Promise<void> {
   let connected = false;
   for (let i = 0; i < 50 && !connected; i++) {
     try {
-      await connectMpv(SOCKET_PATH);
+      await connectMpv(socketPath);
       connected = true;
     } catch {
       await new Promise<void>((r) => setTimeout(r, 100));
     }
   }
-  if (!connected) throw new Error('mpv: could not connect to IPC socket at ' + SOCKET_PATH);
+  if (!connected) throw new Error('mpv: could not connect to IPC socket at ' + socketPath);
 
   // Forward state machine changes to the app store
   // (no bridge needed: mpv-store is the source of truth and is read directly by UI)

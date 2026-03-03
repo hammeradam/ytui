@@ -11,21 +11,24 @@ import { PlaylistView } from './components/PlaylistView';
 import { DownloadQueue } from './components/DownloadQueue';
 import { HelpView } from './components/HelpView';
 import { PlayerBar } from './components/PlayerBar';
+import { SettingsView } from './components/SettingsView';
 
 const VIEW_KEYS: Record<string, ActiveView> = {
   '1': 'search',
   '2': 'library',
   '3': 'playlists',
   '4': 'queue',
+  '5': 'settings',
   '?': 'help',
 };
 
 const VIEW_LABELS: Record<ActiveView, string> = {
-  search: '1:Search',
-  library: '2:Library',
-  playlists: '3:Playlists',
-  queue: '4:Queue',
-  help: '?:Help',
+  search:   '1:Search',
+  library:  '2:Library',
+  playlists:'3:Playlists',
+  queue:    '4:Queue',
+  settings: '5:Settings',
+  help:     '?:Help',
 };
 
 export function App(): React.ReactElement {
@@ -74,7 +77,15 @@ export function App(): React.ReactElement {
 
   // Global keybindings
   useInput((input, key) => {
+    // Let view-local handlers own all input when on settings (or help)
+    const viewOwnsInput = activeView === 'settings' || activeView === 'help';
+
     if (input === 'q' && !key.ctrl) { player.stop(); exit(); return; }
+    const view = VIEW_KEYS[input];
+    if (view) { setActiveView(view === activeView && view === 'help' ? 'search' : view); return; }
+
+    if (viewOwnsInput) return;
+
     if (input === ' ') { void player.togglePlayPause(); return; }
     if (key.leftArrow) { void player.seekBy(-5); return; }
     if (key.rightArrow) { void player.seekBy(5); return; }
@@ -84,8 +95,6 @@ export function App(): React.ReactElement {
     if (input === 'p') { void playPrev(); return; }
     if (input === 's') { toggleShuffle(); return; }
     if (input === 'r') { cycleRepeat(); return; }
-    const view = VIEW_KEYS[input];
-    if (view) { setActiveView(view === activeView && view === 'help' ? 'search' : view); return; }
   });
 
   const headerH = 1;
@@ -116,6 +125,7 @@ export function App(): React.ReactElement {
         {activeView === 'library' && <LibraryView height={contentH} />}
         {activeView === 'playlists' && <PlaylistView height={contentH} />}
         {activeView === 'queue' && <DownloadQueue />}
+        {activeView === 'settings' && <SettingsView />}
         {activeView === 'help' && <HelpView />}
       </Box>
 

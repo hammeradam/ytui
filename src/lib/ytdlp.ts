@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { spawnSync } from 'node:child_process';
 import { getDataDir } from '../db/index';
+import { loadConfig, resolvedDownloadDir } from './config';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -218,7 +219,8 @@ export async function downloadAudio(
   const bin = resolveYtDlp();
   if (!bin) throw new Error('yt-dlp not available');
 
-  const musicDir = path.join(getDataDir(), 'music');
+  const cfg = loadConfig();
+  const musicDir = resolvedDownloadDir();
   fs.mkdirSync(musicDir, { recursive: true });
 
   const url = videoIdOrUrl.startsWith('http')
@@ -227,18 +229,32 @@ export async function downloadAudio(
 
   const outputTemplate = path.join(musicDir, '%(id)s.%(ext)s');
 
+  // Build format selector from config
+  let formatSelector: string;
+  if (cfg.audioFormat === 'm4a') {
+    formatSelector = 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio';
+  } else if (cfg.audioFormat === 'opus') {
+    formatSelector = 'bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio';
+  } else {
+    formatSelector = 'bestaudio';
+  }
+
+  const args = [
+    bin,
+    '-f', formatSelector,
+    '--no-playlist',
+    '-o', outputTemplate,
+    '--print', 'after_move:filepath',
+  ];
+
+  if (cfg.audioQuality !== 'best') {
+    args.push('--audio-quality', cfg.audioQuality);
+  }
+
+  args.push(url);
+
   // Use Bun.spawn for streaming progress output
-  const proc = Bun.spawn(
-    [
-      bin,
-      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-      '--no-playlist',
-      '-o', outputTemplate,
-      '--print', 'after_move:filepath',
-      url,
-    ],
-    { stdout: 'pipe', stderr: 'pipe' },
-  );
+  const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' });
 
   let finalPath = '';
   const decoder = new TextDecoder();

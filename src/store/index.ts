@@ -6,13 +6,14 @@ import { getDb, schema } from '../db/index';
 import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
+import { loadConfig, type Config } from '../lib/config';
 import * as player from '../lib/mpv-player';
 
 // ---------------------------------------------------------------------------
 // View types
 // ---------------------------------------------------------------------------
 
-export type ActiveView = 'search' | 'library' | 'playlists' | 'queue' | 'help';
+export type ActiveView = 'search' | 'library' | 'playlists' | 'queue' | 'help' | 'settings';
 
 // ---------------------------------------------------------------------------
 // Store shape
@@ -47,6 +48,9 @@ export type AppState = {
   // UI
   activeView: ActiveView;
   statusMsg: string;
+
+  // Settings
+  settings: Config;
 
   // Actions — search
   setSearchQuery: (q: string) => void;
@@ -84,6 +88,7 @@ export type AppState = {
   // Actions — UI
   setActiveView: (v: ActiveView) => void;
   setStatusMsg: (msg: string) => void;
+  setSettings: (c: Config) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -117,6 +122,9 @@ export const useStore = create<AppState>((set, get) => ({
   // UI
   activeView: 'search',
   statusMsg: '',
+
+  // Settings
+  settings: loadConfig(),
 
   // --- Search actions ---
   setSearchQuery: (q) => set({ searchQuery: q }),
@@ -331,4 +339,5 @@ export const useStore = create<AppState>((set, get) => ({
   // --- UI actions ---
   setActiveView: (v) => set({ activeView: v }),
   setStatusMsg: (msg) => set({ statusMsg: msg }),
+  setSettings: (c) => set({ settings: c }),
 }));

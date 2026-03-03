@@ -21,6 +21,7 @@ export function SearchView({ height }: Props): React.ReactElement {
   const setError = useStore((s) => s.setSearchError);
   const setStatusMsg = useStore((s) => s.setStatusMsg);
   const downloadedIds = useStore((s) => s.tracks.map((t) => t.id).join(','));
+  const searchResultsLimit = useStore((s) => s.settings.searchResultsLimit);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -30,7 +31,7 @@ export function SearchView({ height }: Props): React.ReactElement {
       setLoading(true);
       setError('');
       try {
-        const res = await searchYouTube(q.trim());
+        const res = await searchYouTube(q.trim(), searchResultsLimit);
         setResults(res);
         setSelectedIdx(0);
       } catch (e: unknown) {

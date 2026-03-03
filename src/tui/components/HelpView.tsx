@@ -6,6 +6,7 @@ const BINDINGS = [
   ['2', 'Library view'],
   ['3', 'Playlists view'],
   ['4', 'Download queue'],
+  ['5', 'Settings'],
   ['?', 'Toggle this help'],
   ['', ''],
   ['j / ↓', 'Move down'],
