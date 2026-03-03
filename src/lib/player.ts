@@ -197,17 +197,26 @@ export function stop(): void {
   emit();
 }
 
-/** Adjust volume (0-100). Immediately re-spawns ffplay at the current position with the new volume. */
+let _volumeDebounce: ReturnType<typeof setTimeout> | null = null;
+
+/** Adjust volume (0-100). Debounces respawn by 100ms so rapid keypresses
+ *  only cause a single gap at the end of the gesture. */
 export async function setVolume(vol: number): Promise<void> {
   _volume = Math.max(0, Math.min(100, Math.round(vol)));
   if (!_state) return;
   _state.volume = _volume;
+  emit();
+
+  // Cancel any pending respawn
+  if (_volumeDebounce) { clearTimeout(_volumeDebounce); _volumeDebounce = null; }
 
   if (_state.playing) {
-    // Re-spawn at current position so the new volume takes effect immediately
-    await seekBy(0);
+    _volumeDebounce = setTimeout(() => {
+      _volumeDebounce = null;
+      void seekBy(0);
+    }, 100);
   } else if (_handle) {
-    // Paused with a live (SIGSTOP'd) handle — kill it so resume() will re-spawn
+    // Paused with a live (SIGSTOP'd) handle — kill it so resume() re-spawns
     // with the new volume instead of SIGCONT'ing the old process
     if (!IS_WIN) {
       try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
