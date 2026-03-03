@@ -13,6 +13,7 @@ export type PlayerState = {
   playing: boolean;
   elapsed: number;  // seconds
   duration: number; // seconds
+  volume: number;   // 0-100
   pid: number | null;
 };
 
@@ -27,6 +28,7 @@ let _handle: PlayHandle | null = null;
 let _ticker: ReturnType<typeof setInterval> | null = null;
 let _onStateChange: ((s: PlayerState | null) => void) | null = null;
 let _onTrackEnd: (() => void) | null = null;
+let _volume = 100; // 0-100, persists across tracks
 
 export function setPlayerCallbacks(
   onStateChange: (s: PlayerState | null) => void,
@@ -57,7 +59,7 @@ function startTicker(): void {
 function spawnFfplay(filePath: string, offsetSec: number): PlayHandle {
   const bin = resolveFfplay() ?? 'ffplay';
   const proc = Bun.spawn(
-    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), filePath],
+    [bin, '-nodisp', '-autoexit', '-ss', String(offsetSec), '-volume', String(_volume), filePath],
     { stdout: 'ignore', stderr: 'ignore' },
   );
   return { proc, startedAt: Date.now(), startOffset: offsetSec };
@@ -80,7 +82,7 @@ export async function play(filePath: string, duration: number, startOffset = 0):
   stopTicker();
   if (_handle) { try { _handle.proc.kill(); } catch { /* ignore */ } _handle = null; }
 
-  _state = { filePath, playing: true, elapsed: startOffset, duration, pid: null };
+  _state = { filePath, playing: true, elapsed: startOffset, duration, volume: _volume, pid: null };
   const handle = spawnFfplay(filePath, startOffset);
   _handle = handle;
   _state.pid = handle.proc.pid ?? null;
@@ -149,6 +151,32 @@ export function stop(): void {
   if (_handle) { try { _handle.proc.kill(); } catch { /* ignore */ } _handle = null; }
   _state = null;
   emit();
+}
+
+/** Adjust volume (0-100) and immediately re-spawn ffplay if a track is playing. */
+export async function setVolume(vol: number): Promise<void> {
+  _volume = Math.max(0, Math.min(100, Math.round(vol)));
+  if (!_state) return;
+  _state.volume = _volume;
+  if (_state.playing && _handle) {
+    // Snapshot elapsed before killing
+    _state.elapsed = _handle.startOffset + (Date.now() - _handle.startedAt) / 1000;
+    stopTicker();
+    try { _handle.proc.kill(); } catch { /* ignore */ }
+    _handle = null;
+    const handle = spawnFfplay(_state.filePath, _state.elapsed);
+    _handle = handle;
+    _state.pid = handle.proc.pid ?? null;
+    emit();
+    startTicker();
+    watchEnd(handle);
+  } else {
+    emit();
+  }
+}
+
+export function getVolume(): number {
+  return _volume;
 }
 
 export function getPlayerState(): PlayerState | null {

@@ -51,7 +51,7 @@ Add a `d` handler in `LibraryView` that removes the track from the DB and delete
 ### ~~10. URL paste to download~~ ✓
 `enqueueUrl()` already exists in `src/lib/downloader.ts` but there is no UI entry point for it. A "paste a URL" flow in `SearchView` — detecting input that looks like a YouTube URL rather than a search query — would expose this without requiring a new view.
 
-### 11. Volume control
+### ~~11. Volume control~~ ✓
 `ffplay` supports a `-volume 0–100` flag. Adding `[` / `]` keybindings to adjust volume and persisting the value across track changes would make the player significantly more usable.
 
 ### 12. Shuffle and repeat modes
