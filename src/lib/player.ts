@@ -120,8 +120,9 @@ export function pause(): void {
 export async function resume(): Promise<void> {
   if (!_state || _state.playing) return;
 
-  if (IS_WIN) {
+  if (IS_WIN || !_handle) {
     // Windows: process was killed on pause — re-spawn from saved offset
+    // Also handles Unix case where handle was cleared (e.g. volume change while paused)
     if (_handle) { try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ } }
     const handle = spawnFfplay(_state.filePath, _state.elapsed);
     _handle = handle;
@@ -133,7 +134,6 @@ export async function resume(): Promise<void> {
     return;
   }
 
-  if (!_handle) return;
   // SIGCONT unfreezes the existing process — no re-spawn, no seek gap
   try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
   // Reset time-tracking origin so the ticker continues from _state.elapsed
@@ -200,10 +200,21 @@ export function stop(): void {
 /** Adjust volume (0-100). Immediately re-spawns ffplay at the current position with the new volume. */
 export async function setVolume(vol: number): Promise<void> {
   _volume = Math.max(0, Math.min(100, Math.round(vol)));
-  if (_state) {
-    _state.volume = _volume;
-    // Re-spawn ffplay at the current position so the new volume takes effect immediately
+  if (!_state) return;
+  _state.volume = _volume;
+
+  if (_state.playing) {
+    // Re-spawn at current position so the new volume takes effect immediately
     await seekBy(0);
+  } else if (_handle) {
+    // Paused with a live (SIGSTOP'd) handle — kill it so resume() will re-spawn
+    // with the new volume instead of SIGCONT'ing the old process
+    if (!IS_WIN) {
+      try { _handle.proc.kill('SIGCONT'); } catch { /* ignore */ }
+    }
+    try { _handle.proc.kill('SIGKILL'); } catch { /* ignore */ }
+    _handle = null;
+    emit();
   }
 }
 
