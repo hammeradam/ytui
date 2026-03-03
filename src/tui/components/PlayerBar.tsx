@@ -12,6 +12,7 @@ function progressBar(elapsed: number, duration: number, width = 30): string {
 
 export function PlayerBar(): React.ReactElement {
   const ps = useStore((s) => s.player);
+  const tracks = useStore((s) => s.tracks);
 
   if (!ps) {
     return (
@@ -25,13 +26,19 @@ export function PlayerBar(): React.ReactElement {
   const total = formatDuration(ps.duration);
   const bar = progressBar(ps.elapsed, ps.duration);
 
+  // Look up title/channel from library; fall back to filename
+  const trackMeta = tracks.find((t) => t.filePath === ps.filePath);
+  const title = trackMeta
+    ? `${trackMeta.title.slice(0, 40)} · ${trackMeta.channel.slice(0, 20)}`
+    : ps.filePath.split('/').pop()?.replace(/\.[^.]+$/, '').slice(0, 40) ?? ps.filePath;
+
   // Refresh player state from module (tracks elapsed via interval)
   // The store is updated via callbacks set in App.tsx
 
   return (
     <Box borderStyle="single" borderColor={ps.playing ? 'green' : 'yellow'} paddingX={1} gap={1}>
       <Text color={ps.playing ? 'green' : 'yellow'}>{ps.playing ? '▶' : '⏸'}</Text>
-      <Text bold>{ps.filePath.split('/').pop()?.replace(/\.[^.]+$/, '').slice(0, 40)}</Text>
+      <Text bold>{title}</Text>
       <Text color="white">{bar}</Text>
       <Text color="cyan">{elapsed}/{total}</Text>
       <Text color="white">Space:pause  n:stop  q:quit</Text>

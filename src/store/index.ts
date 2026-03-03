@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
+import fs from 'node:fs';
 
 import { getDb, schema } from '../db/index';
 import type { Track, Playlist } from '../db/schema';
@@ -50,6 +51,7 @@ export type AppState = {
 
   // Actions — library
   reloadTracks: () => Promise<void>;
+  deleteTrack: (trackId: string) => Promise<void>;
 
   // Actions — downloads
   setDownloadQueue: (q: DownloadJob[]) => void;
@@ -112,6 +114,20 @@ export const useStore = create<AppState>((set, get) => ({
     const db = getDb();
     const rows = await db.select().from(schema.tracks).orderBy(asc(schema.tracks.downloadedAt));
     set({ tracks: rows });
+  },
+
+  deleteTrack: async (trackId) => {
+    const db = getDb();
+    const [track] = await db.select().from(schema.tracks).where(eq(schema.tracks.id, trackId)).limit(1);
+    if (!track) return;
+    // Remove file from disk (best effort)
+    try { fs.unlinkSync(track.filePath); } catch { /* ignore */ }
+    // Delete from DB (FK cascade removes playlist_tracks rows)
+    await db.delete(schema.tracks).where(eq(schema.tracks.id, trackId));
+    await get().reloadTracks();
+    // Refresh active playlist if needed
+    const pid = get().activePlaylistId;
+    if (pid !== null) await get().reloadPlaylistTracks(pid);
   },
 
   // --- Download actions ---
@@ -185,43 +201,50 @@ export const useStore = create<AppState>((set, get) => ({
 
   removeTrackFromPlaylist: async (playlistId, trackId) => {
     const db = getDb();
-    await db
-      .delete(schema.playlistTracks)
-      .where(
-        eq(schema.playlistTracks.playlistId, playlistId),
-      );
-    // Re-insert all except the removed one with normalised positions
-    const remaining = get().playlistTracks.filter((t) => t.id !== trackId);
+    // Read current rows from DB (not store state) to avoid stale data
+    const rows = await db
+      .select({ trackId: schema.playlistTracks.trackId, addedAt: schema.playlistTracks.addedAt })
+      .from(schema.playlistTracks)
+      .where(eq(schema.playlistTracks.playlistId, playlistId))
+      .orderBy(asc(schema.playlistTracks.position));
+    await db.delete(schema.playlistTracks).where(eq(schema.playlistTracks.playlistId, playlistId));
+    const remaining = rows.filter((r) => r.trackId !== trackId);
     for (let i = 0; i < remaining.length; i++) {
       await db.insert(schema.playlistTracks).values({
         playlistId,
-        trackId: remaining[i]!.id,
+        trackId: remaining[i]!.trackId,
         position: i,
-        addedAt: new Date().toISOString(),
+        addedAt: remaining[i]!.addedAt,
       });
     }
     await get().reloadPlaylistTracks(playlistId);
   },
 
   moveTrackInPlaylist: async (playlistId, trackId, direction) => {
-    const tracks = get().playlistTracks;
-    const idx = tracks.findIndex((t) => t.id === trackId);
+    const db = getDb();
+    // Fetch positions from DB to avoid trusting potentially stale in-memory state
+    const rows = await db
+      .select({ trackId: schema.playlistTracks.trackId, position: schema.playlistTracks.position })
+      .from(schema.playlistTracks)
+      .where(eq(schema.playlistTracks.playlistId, playlistId))
+      .orderBy(asc(schema.playlistTracks.position));
+
+    const idx = rows.findIndex((r) => r.trackId === trackId);
     if (idx < 0) return;
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= tracks.length) return;
+    if (swapIdx < 0 || swapIdx >= rows.length) return;
 
-    const db = getDb();
-    // Swap positions
-    const a = tracks[idx]!;
-    const b = tracks[swapIdx]!;
+    const a = rows[idx]!;
+    const b = rows[swapIdx]!;
+    // Swap positions, scoped to this playlist via and()
     await db
       .update(schema.playlistTracks)
-      .set({ position: swapIdx })
-      .where(eq(schema.playlistTracks.trackId, a.id));
+      .set({ position: b.position })
+      .where(and(eq(schema.playlistTracks.playlistId, playlistId), eq(schema.playlistTracks.trackId, a.trackId)));
     await db
       .update(schema.playlistTracks)
-      .set({ position: idx })
-      .where(eq(schema.playlistTracks.trackId, b.id));
+      .set({ position: a.position })
+      .where(and(eq(schema.playlistTracks.playlistId, playlistId), eq(schema.playlistTracks.trackId, b.trackId)));
     await get().reloadPlaylistTracks(playlistId);
   },
 

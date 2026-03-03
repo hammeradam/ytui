@@ -60,9 +60,9 @@ export function openDb(): ReturnType<typeof drizzle<typeof schema>> {
     for (const stmt of statements) {
       sqlite.exec(stmt);
     }
-    sqlite.exec(
-      `INSERT INTO __drizzle_migrations (name, applied_at) VALUES ('${file}', '${new Date().toISOString()}')`,
-    );
+    sqlite
+      .query('INSERT INTO __drizzle_migrations (name, applied_at) VALUES (?, ?)')
+      .run(file, new Date().toISOString());
   }
 
   return drizzle(sqlite, { schema });

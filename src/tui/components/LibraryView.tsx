@@ -20,6 +20,7 @@ export function LibraryView({ height }: Props): React.ReactElement {
   const setStatusMsg = useStore((s) => s.setStatusMsg);
   const setPlayer = useStore((s) => s.setPlayer);
   const addTrackToPlaylist = useStore((s) => s.addTrackToPlaylist);
+  const deleteTrack = useStore((s) => s.deleteTrack);
 
   const selectedTrack: Track | undefined = tracks[selectedIdx];
 
@@ -62,6 +63,16 @@ export function LibraryView({ height }: Props): React.ReactElement {
         }
         return;
       }
+      if (input === 'd') {
+        if (selectedTrack) {
+          const title = selectedTrack.title;
+          void deleteTrack(selectedTrack.id).then(() => {
+            setSelectedIdx((i) => Math.max(0, i - 1));
+            setStatusMsg(`Deleted: ${title}`);
+          });
+        }
+        return;
+      }
     },
   );
 
@@ -92,7 +103,7 @@ export function LibraryView({ height }: Props): React.ReactElement {
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Text color="white"> {tracks.length} tracks · Enter to play · Space to pause/resume · a to add to playlist</Text>
+      <Text color="white"> {tracks.length} tracks · Enter to play · Space to pause/resume · a to add to playlist · d to delete</Text>
       <ScrollList
         items={tracks}
         selectedIndex={selectedIdx}

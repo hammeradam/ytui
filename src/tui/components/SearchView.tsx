@@ -3,7 +3,7 @@ import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
 import { searchYouTube, formatDuration } from '../../lib/ytdlp';
-import { enqueue } from '../../lib/downloader';
+import { enqueue, enqueueUrl } from '../../lib/downloader';
 import { ScrollList } from './ScrollList';
 
 type Props = { height: number };
@@ -20,6 +20,7 @@ export function SearchView({ height }: Props): React.ReactElement {
   const setLoading = useStore((s) => s.setSearchLoading);
   const setError = useStore((s) => s.setSearchError);
   const setStatusMsg = useStore((s) => s.setStatusMsg);
+  const downloadedIds = useStore((s) => new Set(s.tracks.map((t) => t.id)));
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,10 +46,17 @@ export function SearchView({ height }: Props): React.ReactElement {
     (input, key) => {
       if (inputFocused) {
         if (key.return) {
-          // Submit search
+          // Submit search or enqueue URL if YouTube link detected
           if (debounceRef.current) clearTimeout(debounceRef.current);
-          void doSearch(inputVal);
-          setInputFocused(false);
+          const q = inputVal.trim();
+          if (q.includes('youtu')) {
+            setInputFocused(false);
+            setStatusMsg('Fetching video info…');
+            void enqueueUrl(q).then(() => setStatusMsg('Queued!')).catch((e: unknown) => setStatusMsg(`Error: ${String((e as Error)?.message ?? e)}`));
+          } else {
+            void doSearch(q);
+            setInputFocused(false);
+          }
           return;
         }
         if (key.escape) { setInputFocused(false); return; }
@@ -101,7 +109,7 @@ export function SearchView({ height }: Props): React.ReactElement {
           <Text color="white"> {results.length} results · Enter to download · / to search</Text>
         )}
         {!inputVal && !loading && (
-          <Text color="white"> Type to search YouTube</Text>
+          <Text color="white"> Type to search YouTube · paste a URL to download directly</Text>
         )}
       </Box>
 
@@ -119,7 +127,8 @@ export function SearchView({ height }: Props): React.ReactElement {
               color={isSelected ? 'white' : undefined}
             >
               {isSelected ? '▶ ' : '  '}
-              <Text bold={isSelected}>{item.title.slice(0, 55).padEnd(55)}</Text>
+              <Text color="green">{downloadedIds.has(item.id) ? '✓ ' : '  '}</Text>
+              <Text bold={isSelected}>{item.title.slice(0, 53).padEnd(53)}</Text>
               {'  '}
               <Text color="white">{item.channel.slice(0, 20).padEnd(20)}</Text>
               {'  '}

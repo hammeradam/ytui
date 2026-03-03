@@ -104,6 +104,19 @@ export function removeFromQueue(videoId: string): void {
   }
 }
 
+/** Reset an errored job back to pending so it will be retried. */
+export function retryJob(videoId: string): void {
+  const job = _queue.find((j) => j.id === videoId && j.status === 'error');
+  if (!job) return;
+  job.status = 'pending';
+  job.progress = 0;
+  job.speed = '';
+  job.eta = '';
+  job.error = '';
+  emit();
+  void tick();
+}
+
 // ---------------------------------------------------------------------------
 // Internal worker
 // ---------------------------------------------------------------------------

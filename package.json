@@ -8,8 +8,8 @@
     "start": "bun src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "db:migrate": "bun run src/db/migrate.ts",
-    "lint": "oxlint src"
+    "lint": "oxlint src",
+    "build": "bun build ./cli.ts --compile --outfile ytui"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.1",
