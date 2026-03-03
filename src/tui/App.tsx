@@ -3,8 +3,8 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
 import { useStore, type ActiveView } from '../store/index';
 import { setDownloaderCallbacks } from '../lib/downloader';
-import { setPlayerCallbacks } from '../lib/player';
-import * as player from '../lib/player';
+import { setPlayerCallbacks } from '../lib/mpv-player';
+import * as player from '../lib/mpv-player';
 import { SearchView } from './components/SearchView';
 import { LibraryView } from './components/LibraryView';
 import { PlaylistView } from './components/PlaylistView';

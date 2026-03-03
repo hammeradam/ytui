@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
+    "asd": "bun --watch src/test.tsx",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "lint": "oxlint src",

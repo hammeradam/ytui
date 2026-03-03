@@ -6,8 +6,8 @@ import { getDb, schema } from '../db/index';
 import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
-import type { PlayerState } from '../lib/player';
-import * as player from '../lib/player';
+import type { PlayerState } from '../lib/mpv-player';
+import * as player from '../lib/mpv-player';
 
 // ---------------------------------------------------------------------------
 // View types
