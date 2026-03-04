@@ -5,6 +5,7 @@ import { Database } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 
 import * as schema from './schema';
+import { migrations } from './migrations.generated';
 
 export type Db = ReturnType<typeof openDb>;
 
@@ -16,23 +17,11 @@ export function getDataDir(): string {
   return dir;
 }
 
-function getMigrationsDir(): string {
-  // Resolved relative to this file at runtime.
-  return path.join(import.meta.dir, 'migrations');
-}
-
 export function openDb(): ReturnType<typeof drizzle<typeof schema>> {
   const dbPath = path.join(getDataDir(), 'ytui.db');
   const sqlite = new Database(dbPath);
   sqlite.exec('PRAGMA journal_mode = WAL;');
   sqlite.exec('PRAGMA foreign_keys = ON;');
-
-  // Run migrations manually by reading SQL files in order.
-  const migrationsDir = getMigrationsDir();
-  const files = fs
-    .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
 
   // Track applied migrations in a simple meta table.
   sqlite.exec(`
@@ -43,15 +32,14 @@ export function openDb(): ReturnType<typeof drizzle<typeof schema>> {
     );
   `);
 
-  for (const file of files) {
+  for (const { name, sql } of migrations) {
     const already = sqlite
       .query<{ id: number }, [string]>(
         'SELECT id FROM __drizzle_migrations WHERE name = ?',
       )
-      .get(file);
+      .get(name);
     if (already) continue;
 
-    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     // drizzle-kit splits statements with "--> statement-breakpoint"
     const statements = sql
       .split('--> statement-breakpoint')
@@ -62,7 +50,7 @@ export function openDb(): ReturnType<typeof drizzle<typeof schema>> {
     }
     sqlite
       .query('INSERT INTO __drizzle_migrations (name, applied_at) VALUES (?, ?)')
-      .run(file, new Date().toISOString());
+      .run(name, new Date().toISOString());
   }
 
   return drizzle(sqlite, { schema });

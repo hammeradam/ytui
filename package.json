@@ -7,10 +7,10 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "asd": "bun --watch src/test.tsx",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && bun scripts/bundle-migrations.ts",
     "db:studio": "drizzle-kit studio",
     "lint": "oxlint src",
-    "build": "bun build ./src/index.ts --compile --outfile ytui"
+    "build": "bun scripts/bundle-migrations.ts && mkdir -p src/assets && tar czf src/assets/mpv.app.tar.gz -C src/bin mpv.app && bun build --compile --outfile ytui ./src/index.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.1",
@@ -23,6 +23,7 @@
     "@types/react": "^19.2.14",
     "better-sqlite3": "^12.6.2",
     "drizzle-kit": "^0.31.9",
-    "oxlint": "^0.16.6"
+    "oxlint": "^0.16.6",
+    "react-devtools-core": "^7.0.1"
   }
 }

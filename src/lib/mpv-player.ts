@@ -11,6 +11,7 @@
 
 import { handleRawMessage, onEvent } from './mpv-adapter';
 import { loadConfig } from './config';
+import { bundledMpvBin } from './bundled-bins';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,11 +38,14 @@ class MpvPlayer {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  private resolveMpvBin(): string {
+  private async resolveMpvBin(): Promise<string> {
+    // Prefer the binary embedded at compile time (works in the compiled ytui exe).
+    const embedded = await bundledMpvBin();
+    if (embedded) return embedded;
+
     const candidates = [
       '/opt/homebrew/bin/mpv',
       '/usr/local/bin/mpv',
-      './src/bin/mpv.app/Contents/MacOS/mpv',
       'mpv',
     ];
     for (const p of candidates) {
@@ -103,7 +107,7 @@ class MpvPlayer {
     Bun.spawnSync(['rm', '-f', socketPath]);
 
     this.process = Bun.spawn(
-      [this.resolveMpvBin(), '--idle=yes', '--no-video', `--input-ipc-server=${socketPath}`],
+      [await this.resolveMpvBin(), '--idle=yes', '--no-video', `--input-ipc-server=${socketPath}`],
       { stdout: 'ignore', stderr: 'ignore' },
     );
 
