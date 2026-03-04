@@ -10,7 +10,7 @@
     "db:generate": "drizzle-kit generate && bun scripts/bundle-migrations.ts",
     "db:studio": "drizzle-kit studio",
     "lint": "oxlint src",
-    "build": "bun scripts/bundle-migrations.ts && mkdir -p src/assets && tar czf src/assets/mpv.app.tar.gz -C src/bin mpv.app && bun build --compile --outfile ytui ./src/index.ts"
+    "build": "bun scripts/bundle-migrations.ts && bun build --compile --outfile ytui ./src/index.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.1",

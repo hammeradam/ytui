@@ -9,9 +9,124 @@
  *     └─ subscribes to mpv-adapter events for track-end callbacks
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
 import { handleRawMessage, onEvent } from './mpv-adapter';
 import { loadConfig } from './config';
-import { bundledMpvBin } from './bundled-bins';
+
+// ---------------------------------------------------------------------------
+// mpv binary resolution + auto-download
+// ---------------------------------------------------------------------------
+
+const MPV_CACHE_DIR = path.join(os.homedir(), '.cache', 'ytui', 'mpv');
+const MPV_BIN = path.join(MPV_CACHE_DIR, 'mpv.app', 'Contents', 'MacOS', 'mpv');
+let _mpvBin: string | null | undefined;
+
+function isExecutable(p: string): boolean {
+  try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
+}
+
+function resolveMpvSystem(): string | null {
+  const env = (process.env.MPV_BIN ?? '').trim();
+  if (env && isExecutable(env)) return env;
+
+  const candidates = process.platform === 'darwin'
+    ? ['/opt/homebrew/bin/mpv', '/usr/local/bin/mpv']
+    : process.platform === 'win32'
+      ? ['C:\\Program Files\\mpv\\mpv.exe']
+      : ['/usr/bin/mpv', '/usr/local/bin/mpv'];
+
+  for (const c of candidates) {
+    if (isExecutable(c)) return c;
+  }
+
+  // Check PATH
+  try {
+    const r = Bun.spawnSync(process.platform === 'win32' ? ['where', 'mpv'] : ['which', 'mpv']);
+    const found = new TextDecoder().decode(r.stdout).split('\n')[0]?.trim() ?? '';
+    if (r.exitCode === 0 && found && isExecutable(found)) return found;
+  } catch { /* ignore */ }
+
+  // Previously downloaded
+  if (isExecutable(MPV_BIN)) return MPV_BIN;
+
+  return null;
+}
+
+export async function ensureMpv(
+  onProgress?: (msg: string) => void,
+): Promise<string> {
+  if (_mpvBin) return _mpvBin;
+
+  const existing = resolveMpvSystem();
+  if (existing) { _mpvBin = existing; return existing; }
+
+  if (process.platform !== 'darwin') {
+    throw new Error('mpv not found. Please install mpv and ensure it is on your $PATH.');
+  }
+
+  onProgress?.('mpv not found — fetching latest release from GitHub…');
+
+  const apiUrl = 'https://api.github.com/repos/mpv-player/mpv/releases/latest';
+  const res = await fetch(apiUrl, { headers: { 'User-Agent': 'ytui/0.1' } });
+  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+  const release = (await res.json()) as {
+    assets: { name: string; browser_download_url: string }[];
+  };
+
+  // Release assets look like: mpv-v0.41.0-macos-26-arm.zip  (arm64)
+  //                            mpv-v0.41.0-macos-26-x86_64.zip
+  const archSuffix = process.arch === 'arm64' ? '-arm.zip' : '-x86_64.zip';
+  const asset =
+    release.assets.find((a) => a.name.includes('macos') && a.name.endsWith(archSuffix)) ??
+    release.assets.find((a) => a.name.includes('macos') && a.name.endsWith('.zip'));
+
+  if (!asset) throw new Error('Could not find a macOS mpv binary in the latest release assets.');
+
+  onProgress?.(`Downloading ${asset.name}…`);
+  const binRes = await fetch(asset.browser_download_url);
+  if (!binRes.ok) throw new Error(`Download failed: ${binRes.status}`);
+
+  const destDir = MPV_CACHE_DIR;
+  fs.mkdirSync(destDir, { recursive: true });
+  const tempZip = path.join(destDir, 'mpv.zip');
+  await Bun.write(tempZip, await binRes.arrayBuffer());
+
+  onProgress?.('Extracting…');
+
+  // Step 1: unzip the outer .zip
+  const unzip = Bun.spawn(['unzip', '-o', '-q', tempZip, '-d', destDir], {
+    stdout: 'ignore', stderr: 'pipe',
+  });
+  await unzip.exited;
+  if (unzip.exitCode !== 0) {
+    const err = await new Response(unzip.stderr).text();
+    throw new Error(`mpv unzip failed: ${err}`);
+  }
+  fs.unlinkSync(tempZip);
+
+  // Step 2: extract the inner mpv.tar.gz that lives inside the zip
+  const innerTar = fs.readdirSync(destDir).find((f) => f.endsWith('.tar.gz'));
+  if (!innerTar) throw new Error('Could not find inner mpv.tar.gz after unzip.');
+  const innerTarPath = path.join(destDir, innerTar);
+  const tar = Bun.spawn(['tar', 'xzf', innerTarPath, '-C', destDir], {
+    stdout: 'ignore', stderr: 'pipe',
+  });
+  await tar.exited;
+  if (tar.exitCode !== 0) {
+    const err = await new Response(tar.stderr).text();
+    throw new Error(`mpv tar extraction failed: ${err}`);
+  }
+  fs.unlinkSync(innerTarPath);
+
+  fs.chmodSync(MPV_BIN, 0o755);
+
+  _mpvBin = MPV_BIN;
+  onProgress?.('mpv ready.');
+  return MPV_BIN;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,19 +154,7 @@ class MpvPlayer {
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   private async resolveMpvBin(): Promise<string> {
-    // Prefer the binary embedded at compile time (works in the compiled ytui exe).
-    const embedded = await bundledMpvBin();
-    if (embedded) return embedded;
-
-    const candidates = [
-      '/opt/homebrew/bin/mpv',
-      '/usr/local/bin/mpv',
-      'mpv',
-    ];
-    for (const p of candidates) {
-      if (Bun.spawnSync(['test', '-x', p]).exitCode === 0) return p;
-    }
-    return 'mpv';
+    return ensureMpv();
   }
 
   private ipc(command: unknown[]): void {
@@ -172,6 +275,10 @@ class MpvPlayer {
 
   getVolume(): number {
     return this.volume;
+  }
+
+  quit(): void {
+    this.ipc(['quit']);
   }
 }
 
