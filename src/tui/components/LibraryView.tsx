@@ -23,67 +23,71 @@ export function LibraryView({ height }: Props): React.ReactElement {
 
   const selectedTrack: Track | undefined = tracks[selectedIdx];
 
-  useInput(
-    (input, key) => {
-      if (mode === 'add-to-playlist') {
-        if (key.escape) { setMode('list'); return; }
-        if (key.return) {
-          const pl = playlists[playlistSelIdx];
-          if (pl && selectedTrack) {
-            void addTrackToPlaylist(pl.id, selectedTrack.id).then(() =>
-              setStatusMsg(`Added to "${pl.name}"`),
-            );
-          }
-          setMode('list');
-          return;
-        }
-        if (key.downArrow || input === 'j')
-          setPlaylistSelIdx((i) => Math.min(i + 1, playlists.length - 1));
-        if (key.upArrow || input === 'k')
-          setPlaylistSelIdx((i) => Math.max(i - 1, 0));
+  useInput((input, key) => {
+    if (mode === 'add-to-playlist') {
+      if (key.escape) {
+        setMode('list');
         return;
       }
-
       if (key.return) {
-        if (selectedTrack) {
-          void playFromContext(selectedTrack, tracks).then(() =>
-            setStatusMsg(`Playing: ${selectedTrack.title}`),
+        const pl = playlists[playlistSelIdx];
+        if (pl && selectedTrack) {
+          void addTrackToPlaylist(pl.id, selectedTrack.id).then(() =>
+            setStatusMsg(`Added to "${pl.name}"`),
           );
         }
+        setMode('list');
         return;
       }
-      if (input === 'a') {
-        if (selectedTrack && playlists.length > 0) {
-          setMode('add-to-playlist');
-          setPlaylistSelIdx(0);
-        } else {
-          setStatusMsg('No playlists — create one in the Playlists view (3)');
-        }
-        return;
+      if (key.downArrow || input === 'j')
+        setPlaylistSelIdx((i) => Math.min(i + 1, playlists.length - 1));
+      if (key.upArrow || input === 'k')
+        setPlaylistSelIdx((i) => Math.max(i - 1, 0));
+      return;
+    }
+
+    if (key.return) {
+      if (selectedTrack) {
+        void playFromContext(selectedTrack, tracks);
+        setStatusMsg(`Playing: ${selectedTrack.title}`);
       }
-      if (input === 'd') {
-        if (selectedTrack) {
-          const title = selectedTrack.title;
-          void deleteTrack(selectedTrack.id).then(() => {
-            setSelectedIdx((i) => Math.max(0, i - 1));
-            setStatusMsg(`Deleted: ${title}`);
-          });
-        }
-        return;
+      return;
+    }
+    if (input === 'a') {
+      if (selectedTrack && playlists.length > 0) {
+        setMode('add-to-playlist');
+        setPlaylistSelIdx(0);
+      } else {
+        setStatusMsg('No playlists — create one in the Playlists view (3)');
       }
-    },
-  );
+      return;
+    }
+    if (input === 'd') {
+      if (selectedTrack) {
+        const title = selectedTrack.title;
+        void deleteTrack(selectedTrack.id).then(() => {
+          setSelectedIdx((i) => Math.max(0, i - 1));
+          setStatusMsg(`Deleted: ${title}`);
+        });
+      }
+      return;
+    }
+  });
 
   const listHeight = height - 1;
 
   if (mode === 'add-to-playlist') {
     return (
       <Box flexDirection="column" flexGrow={1}>
-        <Text bold color="cyan"> Add to playlist (Esc to cancel)</Text>
+        <Text bold color="cyan">
+          {' '}
+          Add to playlist (Esc to cancel)
+        </Text>
         {playlists.map((pl, i) => (
           <Box key={pl.id}>
             <Text backgroundColor={i === playlistSelIdx ? 'blue' : undefined}>
-              {i === playlistSelIdx ? '▶ ' : '  '}{pl.name}
+              {i === playlistSelIdx ? '▶ ' : '  '}
+              {pl.name}
             </Text>
           </Box>
         ))}
@@ -93,15 +97,26 @@ export function LibraryView({ height }: Props): React.ReactElement {
 
   if (tracks.length === 0) {
     return (
-      <Box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
-        <Text color="white">Library is empty. Search and download tracks (1)</Text>
+      <Box
+        flexDirection="column"
+        flexGrow={1}
+        justifyContent="center"
+        alignItems="center"
+      >
+        <Text color="white">
+          Library is empty. Search and download tracks (1)
+        </Text>
       </Box>
     );
   }
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Text color="white"> {tracks.length} tracks · Enter to play · Space to pause/resume · a to add to playlist · d to delete</Text>
+      <Text color="white">
+        {' '}
+        {tracks.length} tracks · Enter to play · Space to pause/resume · a to
+        add to playlist · d to delete
+      </Text>
       <ScrollList
         items={tracks}
         selectedIndex={selectedIdx}
@@ -114,7 +129,9 @@ export function LibraryView({ height }: Props): React.ReactElement {
               color={isSelected ? 'white' : undefined}
             >
               {isSelected ? '▶ ' : '  '}
-              <Text bold={isSelected}>{track.title.slice(0, 55).padEnd(55)}</Text>
+              <Text bold={isSelected}>
+                {track.title.slice(0, 55).padEnd(55)}
+              </Text>
               {'  '}
               <Text color="white">{track.channel.slice(0, 20).padEnd(20)}</Text>
               {'  '}

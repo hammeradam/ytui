@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
@@ -20,7 +20,8 @@ export function SearchView({ height }: Props): React.ReactElement {
   const setLoading = useStore((s) => s.setSearchLoading);
   const setError = useStore((s) => s.setSearchError);
   const setStatusMsg = useStore((s) => s.setStatusMsg);
-  const downloadedIds = useStore((s) => s.tracks.map((t) => t.id).join(','));
+  const tracks = useStore((s) => s.tracks);
+  const downloadedIds = useMemo(() => new Set(tracks.map((t) => t.id)), [tracks]);
   const searchResultsLimit = useStore((s) => s.settings.searchResultsLimit);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,7 +129,7 @@ export function SearchView({ height }: Props): React.ReactElement {
               color={isSelected ? 'white' : undefined}
             >
               {isSelected ? '▶ ' : '  '}
-              <Text color="green">{downloadedIds.includes(item.id) ? '✓ ' : '  '}</Text>
+              <Text color="green">{downloadedIds.has(item.id) ? '✓ ' : '  '}</Text>
               <Text bold={isSelected}>{item.title.slice(0, 53).padEnd(53)}</Text>
               {'  '}
               <Text color="white">{item.channel.slice(0, 20).padEnd(20)}</Text>

@@ -62,6 +62,7 @@ type GeneralSetting =
   | EnumSetting<'audioQuality'>
   | EnumSetting<'searchResultsLimit'>
   | IntSetting<'defaultVolume'>
+  | IntSetting<'restartThreshold'>
   | StrSetting<'mpvSocketPath'>
   | StrSetting<'downloadDir'>;
 
@@ -80,6 +81,15 @@ const GENERAL_SETTINGS: GeneralSetting[] = [
     min: 0,
     max: 100,
     step: 5,
+  },
+  {
+    kind: 'int',
+    key: 'restartThreshold',
+    label: 'Restart threshold',
+    description: 'Seconds after which "previous" jumps to the previous track instead of restarting the current one',
+    min: 0,
+    max: 60,
+    step: 1,
   },
   {
     kind: 'enum',

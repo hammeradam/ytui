@@ -14,21 +14,21 @@ import { PlayerBar } from './components/PlayerBar';
 import { SettingsView } from './components/SettingsView';
 
 const VIEW_LABELS: Record<ActiveView, string> = {
-  search:    'Search',
-  library:   'Library',
+  search: 'Search',
+  library: 'Library',
   playlists: 'Playlists',
-  queue:     'Queue',
-  settings:  'Settings',
-  help:      'Help',
+  queue: 'Queue',
+  settings: 'Settings',
+  help: 'Help',
 };
 
 const VIEW_ACTIONS = [
-  { view: 'search'    as ActiveView, action: 'viewSearch'    as const },
-  { view: 'library'   as ActiveView, action: 'viewLibrary'   as const },
+  { view: 'search' as ActiveView, action: 'viewSearch' as const },
+  { view: 'library' as ActiveView, action: 'viewLibrary' as const },
   { view: 'playlists' as ActiveView, action: 'viewPlaylists' as const },
-  { view: 'queue'     as ActiveView, action: 'viewQueue'     as const },
-  { view: 'settings'  as ActiveView, action: 'viewSettings'  as const },
-  { view: 'help'      as ActiveView, action: 'viewHelp'      as const },
+  { view: 'queue' as ActiveView, action: 'viewQueue' as const },
+  { view: 'settings' as ActiveView, action: 'viewSettings' as const },
+  { view: 'help' as ActiveView, action: 'viewHelp' as const },
 ];
 
 export function App(): React.ReactElement {
@@ -64,9 +64,7 @@ export function App(): React.ReactElement {
 
   // Wire up player track-end → advance queue
   useEffect(() => {
-    player.setCallbacks(
-      () => void playNext(),
-    );
+    player.setCallbacks(() => void playNext());
   }, [playNext]);
 
   // Initial data load
@@ -80,7 +78,11 @@ export function App(): React.ReactElement {
     // Let view-local handlers own all input when on settings (or help)
     const viewOwnsInput = activeView === 'settings' || activeView === 'help';
 
-    if (matchHotkey(hotkeys.quit, input, key) && !key.ctrl) { player.destroy(); exit(); return; }
+    if (matchHotkey(hotkeys.quit, input, key) && !key.ctrl) {
+      player.destroy();
+      exit();
+      return;
+    }
 
     // View-switching keys
     for (const { view, action } of VIEW_ACTIONS) {
@@ -92,15 +94,42 @@ export function App(): React.ReactElement {
 
     if (viewOwnsInput) return;
 
-    if (matchHotkey(hotkeys.playPause,     input, key)) { void player.togglePlayPause(); return; }
-    if (matchHotkey(hotkeys.seekBack,      input, key)) { void player.seekBy(-5);        return; }
-    if (matchHotkey(hotkeys.seekForward,   input, key)) { void player.seekBy(5);         return; }
-    if (matchHotkey(hotkeys.volumeDown,    input, key)) { player.setVolume(player.getVolume() - 5); return; }
-    if (matchHotkey(hotkeys.volumeUp,      input, key)) { player.setVolume(player.getVolume() + 5); return; }
-    if (matchHotkey(hotkeys.nextTrack,     input, key)) { void playNext();        return; }
-    if (matchHotkey(hotkeys.prevTrack,     input, key)) { void playPrev();        return; }
-    if (matchHotkey(hotkeys.toggleShuffle, input, key)) { toggleShuffle();        return; }
-    if (matchHotkey(hotkeys.cycleRepeat,   input, key)) { cycleRepeat();          return; }
+    if (matchHotkey(hotkeys.playPause, input, key)) {
+      void player.togglePlayPause();
+      return;
+    }
+    if (matchHotkey(hotkeys.seekBack, input, key)) {
+      void player.seekBy(-5);
+      return;
+    }
+    if (matchHotkey(hotkeys.seekForward, input, key)) {
+      void player.seekBy(5);
+      return;
+    }
+    if (matchHotkey(hotkeys.volumeDown, input, key)) {
+      player.setVolume(player.getVolume() - 5);
+      return;
+    }
+    if (matchHotkey(hotkeys.volumeUp, input, key)) {
+      player.setVolume(player.getVolume() + 5);
+      return;
+    }
+    if (matchHotkey(hotkeys.nextTrack, input, key)) {
+      void playNext();
+      return;
+    }
+    if (matchHotkey(hotkeys.prevTrack, input, key)) {
+      void playPrev();
+      return;
+    }
+    if (matchHotkey(hotkeys.toggleShuffle, input, key)) {
+      toggleShuffle();
+      return;
+    }
+    if (matchHotkey(hotkeys.cycleRepeat, input, key)) {
+      cycleRepeat();
+      return;
+    }
   });
 
   const headerH = 1;
@@ -112,8 +141,10 @@ export function App(): React.ReactElement {
     <Box flexDirection="column" width={cols} height={rows}>
       {/* Header / tab bar */}
       <Box gap={2} paddingX={1} backgroundColor="gray" padding={1}>
-        <Text bold color="white">ytui</Text>
-        {(VIEW_ACTIONS.map(({ view, action }) => (
+        <Text bold color="white">
+          ytui
+        </Text>
+        {VIEW_ACTIONS.map(({ view, action }) => (
           <Text
             key={view}
             bold={activeView === view}
@@ -122,7 +153,7 @@ export function App(): React.ReactElement {
           >
             {hotkeys[action]}:{VIEW_LABELS[view]}
           </Text>
-        )))}
+        ))}
       </Box>
 
       {/* Main content */}

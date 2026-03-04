@@ -8,12 +8,19 @@ import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
 import { loadConfig, type Config } from '../lib/config';
 import { player } from '../lib/mpv-player';
+import { usePlayerStore } from './mpv-store';
 
 // ---------------------------------------------------------------------------
 // View types
 // ---------------------------------------------------------------------------
 
-export type ActiveView = 'search' | 'library' | 'playlists' | 'queue' | 'help' | 'settings';
+export type ActiveView =
+  | 'search'
+  | 'library'
+  | 'playlists'
+  | 'queue'
+  | 'help'
+  | 'settings';
 
 // ---------------------------------------------------------------------------
 // Store shape
@@ -35,8 +42,8 @@ export type AppState = {
   downloadQueue: DownloadJob[];
 
   // Play queue
-  queue: Track[];       // ordered list of tracks to play
-  queueIndex: number;   // index of currently-playing track in queue (-1 = none)
+  queue: Track[]; // ordered list of tracks to play
+  queueIndex: number; // index of currently-playing track in queue (-1 = none)
   repeatMode: RepeatMode;
   shuffle: boolean;
 
@@ -67,11 +74,11 @@ export type AppState = {
 
   // Actions — play queue
   /** Start playing `track` within the given `context` list; auto-advances on track end. */
-  playFromContext: (track: Track, context: Track[]) => Promise<void>;
+  playFromContext: (track: Track, context: Track[]) => void;
   /** Advance to next track (respects shuffle / repeat). Returns true if a track was started. */
-  playNext: () => Promise<boolean>;
+  playNext: () => boolean;
   /** Go back to previous track. */
-  playPrev: () => Promise<void>;
+  playPrev: () => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
 
@@ -82,8 +89,15 @@ export type AppState = {
   createPlaylist: (name: string) => Promise<Playlist>;
   deletePlaylist: (id: number) => Promise<void>;
   addTrackToPlaylist: (playlistId: number, trackId: string) => Promise<void>;
-  removeTrackFromPlaylist: (playlistId: number, trackId: string) => Promise<void>;
-  moveTrackInPlaylist: (playlistId: number, trackId: string, direction: 'up' | 'down') => Promise<void>;
+  removeTrackFromPlaylist: (
+    playlistId: number,
+    trackId: string,
+  ) => Promise<void>;
+  moveTrackInPlaylist: (
+    playlistId: number,
+    trackId: string,
+    direction: 'up' | 'down',
+  ) => Promise<void>;
 
   // Actions — UI
   setActiveView: (v: ActiveView) => void;
@@ -95,7 +109,10 @@ export type AppState = {
 // Store
 // ---------------------------------------------------------------------------
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>((set, get) => {
+  let statusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  return ({
   // Search
   searchQuery: '',
   searchResults: [],
@@ -135,16 +152,27 @@ export const useStore = create<AppState>((set, get) => ({
   // --- Library actions ---
   reloadTracks: async () => {
     const db = getDb();
-    const rows = await db.select().from(schema.tracks).orderBy(asc(schema.tracks.downloadedAt));
+    const rows = await db
+      .select()
+      .from(schema.tracks)
+      .orderBy(asc(schema.tracks.downloadedAt));
     set({ tracks: rows });
   },
 
   deleteTrack: async (trackId) => {
     const db = getDb();
-    const [track] = await db.select().from(schema.tracks).where(eq(schema.tracks.id, trackId)).limit(1);
+    const [track] = await db
+      .select()
+      .from(schema.tracks)
+      .where(eq(schema.tracks.id, trackId))
+      .limit(1);
     if (!track) return;
     // Remove file from disk (best effort)
-    try { fs.unlinkSync(track.filePath); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(track.filePath);
+    } catch {
+      /* ignore */
+    }
     // Delete from DB (FK cascade removes playlist_tracks rows)
     await db.delete(schema.tracks).where(eq(schema.tracks.id, trackId));
     await get().reloadTracks();
@@ -157,13 +185,13 @@ export const useStore = create<AppState>((set, get) => ({
   setDownloadQueue: (q) => set({ downloadQueue: q }),
 
   // --- Play queue actions ---
-  playFromContext: async (track, context) => {
+  playFromContext: (track, context) => {
     const idx = context.findIndex((t) => t.id === track.id);
     set({ queue: context, queueIndex: idx < 0 ? 0 : idx });
-    await player.play(track.filePath);
+    player.play(track.filePath);
   },
 
-  playNext: async () => {
+  playNext: () => {
     const { queue, queueIndex, repeatMode, shuffle } = get();
     if (queue.length === 0) return false;
 
@@ -171,7 +199,7 @@ export const useStore = create<AppState>((set, get) => ({
       // Replay same track
       const t = queue[queueIndex];
       if (!t) return false;
-      await player.play(t.filePath);
+      player.play(t.filePath);
       return true;
     }
 
@@ -181,8 +209,9 @@ export const useStore = create<AppState>((set, get) => ({
       if (queue.length === 1) {
         nextIdx = 0;
       } else {
-        do { nextIdx = Math.floor(Math.random() * queue.length); }
-        while (nextIdx === queueIndex);
+        do {
+          nextIdx = Math.floor(Math.random() * queue.length);
+        } while (nextIdx === queueIndex);
       }
     } else {
       nextIdx = queueIndex + 1;
@@ -200,18 +229,24 @@ export const useStore = create<AppState>((set, get) => ({
 
     const t = queue[nextIdx]!;
     set({ queueIndex: nextIdx });
-    await player.play(t.filePath);
+    player.play(t.filePath);
     return true;
   },
 
-  playPrev: async () => {
+  playPrev: () => {
     const { queue, queueIndex } = get();
     if (queue.length === 0) return;
+    // If more than 3 s have elapsed, restart the current track instead
+    const elapsed = usePlayerStore.getState().time;
+    if (elapsed > loadConfig().restartThreshold) {
+      player.seekTo(0);
+      return;
+    }
     const prevIdx = Math.max(0, queueIndex - 1);
     const t = queue[prevIdx];
     if (!t) return;
     set({ queueIndex: prevIdx });
-    await player.play(t.filePath);
+    player.play(t.filePath);
   },
 
   toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),
@@ -219,15 +254,20 @@ export const useStore = create<AppState>((set, get) => ({
   cycleRepeat: () =>
     set((s) => ({
       repeatMode:
-        s.repeatMode === 'none' ? 'one'
-        : s.repeatMode === 'one' ? 'all'
-        : 'none',
+        s.repeatMode === 'none'
+          ? 'one'
+          : s.repeatMode === 'one'
+            ? 'all'
+            : 'none',
     })),
 
   // --- Playlist actions ---
   reloadPlaylists: async () => {
     const db = getDb();
-    const rows = await db.select().from(schema.playlists).orderBy(asc(schema.playlists.createdAt));
+    const rows = await db
+      .select()
+      .from(schema.playlists)
+      .orderBy(asc(schema.playlists.createdAt));
     set({ playlists: rows });
   },
 
@@ -239,9 +279,15 @@ export const useStore = create<AppState>((set, get) => ({
   reloadPlaylistTracks: async (playlistId) => {
     const db = getDb();
     const rows = await db
-      .select({ track: schema.tracks, position: schema.playlistTracks.position })
+      .select({
+        track: schema.tracks,
+        position: schema.playlistTracks.position,
+      })
       .from(schema.playlistTracks)
-      .innerJoin(schema.tracks, eq(schema.playlistTracks.trackId, schema.tracks.id))
+      .innerJoin(
+        schema.tracks,
+        eq(schema.playlistTracks.trackId, schema.tracks.id),
+      )
       .where(eq(schema.playlistTracks.playlistId, playlistId))
       .orderBy(asc(schema.playlistTracks.position));
     set({ playlistTracks: rows.map((r) => r.track) });
@@ -260,7 +306,8 @@ export const useStore = create<AppState>((set, get) => ({
   deletePlaylist: async (id) => {
     const db = getDb();
     await db.delete(schema.playlists).where(eq(schema.playlists.id, id));
-    if (get().activePlaylistId === id) set({ activePlaylistId: null, playlistTracks: [] });
+    if (get().activePlaylistId === id)
+      set({ activePlaylistId: null, playlistTracks: [] });
     await get().reloadPlaylists();
   },
 
@@ -272,9 +319,8 @@ export const useStore = create<AppState>((set, get) => ({
       .from(schema.playlistTracks)
       .where(eq(schema.playlistTracks.playlistId, playlistId))
       .orderBy(asc(schema.playlistTracks.position));
-    const maxPos = existing.length > 0
-      ? Math.max(...existing.map((r) => r.position))
-      : -1;
+    const maxPos =
+      existing.length > 0 ? Math.max(...existing.map((r) => r.position)) : -1;
     await db
       .insert(schema.playlistTracks)
       .values({
@@ -284,35 +330,47 @@ export const useStore = create<AppState>((set, get) => ({
         addedAt: new Date().toISOString(),
       })
       .onConflictDoNothing();
-    if (get().activePlaylistId === playlistId) await get().reloadPlaylistTracks(playlistId);
+    if (get().activePlaylistId === playlistId)
+      await get().reloadPlaylistTracks(playlistId);
   },
 
   removeTrackFromPlaylist: async (playlistId, trackId) => {
     const db = getDb();
-    // Read current rows from DB (not store state) to avoid stale data
-    const rows = await db
-      .select({ trackId: schema.playlistTracks.trackId, addedAt: schema.playlistTracks.addedAt })
-      .from(schema.playlistTracks)
-      .where(eq(schema.playlistTracks.playlistId, playlistId))
-      .orderBy(asc(schema.playlistTracks.position));
-    await db.delete(schema.playlistTracks).where(eq(schema.playlistTracks.playlistId, playlistId));
-    const remaining = rows.filter((r) => r.trackId !== trackId);
-    for (let i = 0; i < remaining.length; i++) {
-      await db.insert(schema.playlistTracks).values({
-        playlistId,
-        trackId: remaining[i]!.trackId,
-        position: i,
-        addedAt: remaining[i]!.addedAt,
-      });
-    }
-    await get().reloadPlaylistTracks(playlistId);
+
+    db.transaction(async (tx) => {
+      // Read current rows from DB (not store state) to avoid stale data
+      const rows = await tx
+        .select({
+          trackId: schema.playlistTracks.trackId,
+          addedAt: schema.playlistTracks.addedAt,
+        })
+        .from(schema.playlistTracks)
+        .where(eq(schema.playlistTracks.playlistId, playlistId))
+        .orderBy(asc(schema.playlistTracks.position));
+      await tx
+        .delete(schema.playlistTracks)
+        .where(eq(schema.playlistTracks.playlistId, playlistId));
+      const remaining = rows.filter((r) => r.trackId !== trackId);
+      for (let i = 0; i < remaining.length; i++) {
+        await tx.insert(schema.playlistTracks).values({
+          playlistId,
+          trackId: remaining[i]!.trackId,
+          position: i,
+          addedAt: remaining[i]!.addedAt,
+        });
+      }
+      await get().reloadPlaylistTracks(playlistId);
+    });
   },
 
   moveTrackInPlaylist: async (playlistId, trackId, direction) => {
     const db = getDb();
     // Fetch positions from DB to avoid trusting potentially stale in-memory state
     const rows = await db
-      .select({ trackId: schema.playlistTracks.trackId, position: schema.playlistTracks.position })
+      .select({
+        trackId: schema.playlistTracks.trackId,
+        position: schema.playlistTracks.position,
+      })
       .from(schema.playlistTracks)
       .where(eq(schema.playlistTracks.playlistId, playlistId))
       .orderBy(asc(schema.playlistTracks.position));
@@ -328,16 +386,33 @@ export const useStore = create<AppState>((set, get) => ({
     await db
       .update(schema.playlistTracks)
       .set({ position: b.position })
-      .where(and(eq(schema.playlistTracks.playlistId, playlistId), eq(schema.playlistTracks.trackId, a.trackId)));
+      .where(
+        and(
+          eq(schema.playlistTracks.playlistId, playlistId),
+          eq(schema.playlistTracks.trackId, a.trackId),
+        ),
+      );
     await db
       .update(schema.playlistTracks)
       .set({ position: a.position })
-      .where(and(eq(schema.playlistTracks.playlistId, playlistId), eq(schema.playlistTracks.trackId, b.trackId)));
+      .where(
+        and(
+          eq(schema.playlistTracks.playlistId, playlistId),
+          eq(schema.playlistTracks.trackId, b.trackId),
+        ),
+      );
     await get().reloadPlaylistTracks(playlistId);
   },
 
   // --- UI actions ---
   setActiveView: (v) => set({ activeView: v }),
-  setStatusMsg: (msg) => set({ statusMsg: msg }),
+  setStatusMsg: (msg) => {
+    if (statusTimer !== null) { clearTimeout(statusTimer); statusTimer = null; }
+    set({ statusMsg: msg });
+    if (msg) {
+      statusTimer = setTimeout(() => { set({ statusMsg: '' }); statusTimer = null; }, 3000);
+    }
+  },
   setSettings: (c) => set({ settings: c }),
-}));
+  });
+});

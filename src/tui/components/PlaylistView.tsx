@@ -56,7 +56,7 @@ export function PlaylistView({ height }: Props): React.ReactElement {
         if (input === 'd') {
           const pl = playlists[plSelIdx];
           if (pl) {
-            void deletePlaylist(pl.id).then(() => setStatusMsg(`Deleted "${pl.name}"`));
+            deletePlaylist(pl.id).then(() => setStatusMsg(`Deleted "${pl.name}"`));
             setPlSelIdx((i) => Math.max(0, i - 1));
           }
           return;
@@ -69,9 +69,9 @@ export function PlaylistView({ height }: Props): React.ReactElement {
         if (key.return) {
           const track = playlistTracks[trSelIdx];
           if (track) {
-            void playFromContext(track, playlistTracks).then(() =>
-              setStatusMsg(`Playing: ${track.title}`),
-            );
+            playFromContext(track, playlistTracks)
+
+            setStatusMsg(`Playing: ${track.title}`)
           }
           return;
         }

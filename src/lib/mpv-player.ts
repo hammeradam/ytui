@@ -153,6 +153,10 @@ class MpvPlayer {
     this.ipc(['seek', deltaSec, 'relative']);
   }
 
+  seekTo(sec: number): void {
+    this.ipc(['seek', sec, 'absolute']);
+  }
+
   stop(): void {
     this.ipc(['stop']);
   }

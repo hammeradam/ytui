@@ -49,6 +49,8 @@ export type Config = {
   audioQuality: AudioQuality;
   /** Max number of YouTube search results to display. */
   searchResultsLimit: number;
+  /** Seconds after which "play" on the current track restarts instead of resuming. */
+  restartThreshold: number;
   /** Unix socket path for mpv IPC. */
   mpvSocketPath: string;
   /** Directory where audio files are saved. Empty = default (~/.ytui/music). */
@@ -81,6 +83,7 @@ export const CONFIG_DEFAULTS: Config = {
   audioFormat:         'm4a',
   audioQuality:        'best',
   searchResultsLimit:  10,
+  restartThreshold:    5,
   mpvSocketPath:       '/tmp/mpv.sock',
   downloadDir:         '',
   hotkeys:             { ...DEFAULT_HOTKEYS },

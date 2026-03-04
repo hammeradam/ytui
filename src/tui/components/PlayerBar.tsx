@@ -5,7 +5,7 @@ import { useStore } from '../../store/index';
 import { usePlayerStore } from '../../store/mpv-store';
 import { formatDuration } from '../../lib/ytdlp';
 
-function ProgressBar({ elapsed, duration, width = 30 }: { elapsed: number; duration: number; width?: number }) {
+function progressBar({ elapsed, duration, width = 30 }: { elapsed: number; duration: number; width?: number }) {
   if (!duration) return '░'.repeat(width);
   const filled = Math.round((elapsed / duration) * width);  
 
@@ -43,7 +43,7 @@ export function PlayerBar(): React.ReactElement {
     <Box borderStyle="single" borderColor={isPlaying ? 'green' : 'yellow'} paddingX={1} gap={1}>
       <Text color={isPlaying ? 'green' : 'yellow'}>{isPlaying ? '▶' : '⏸'}</Text>
       <Text bold>{title}</Text>
-      <Text color="white"><ProgressBar elapsed={time} duration={duration} /></Text>
+      <Text color="white">{progressBar({ elapsed: time, duration })}</Text>
       <Text color="cyan">{formatDuration(time)}/{formatDuration(duration)}</Text>
       <Text color="white">vol:{volume}%{repeatLabel}{shuffleLabel}{queueLabel}</Text>
       <Text color="white">Space:pause  ←→:seek  p:prev  n:next  s:shuffle  r:repeat  u/i:vol  q:quit</Text>
