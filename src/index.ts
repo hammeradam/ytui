@@ -6,8 +6,10 @@ import { player } from './lib/mpv-player';
 
 async function main(): Promise<void> {
   getDb();
-  await ensureYtDlp((msg) => process.stderr.write(msg + '\n'));
-  await ensureMpv((msg) => process.stderr.write(msg + '\n'));
+  await Promise.all([
+    ensureYtDlp((msg) => process.stderr.write(msg + '\n')),
+    ensureMpv((msg) => process.stderr.write(msg + '\n')),
+  ])
   await player.init();
   startTui();
 }
