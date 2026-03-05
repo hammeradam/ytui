@@ -11,17 +11,17 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 
 import { handleRawMessage, onEvent } from './mpv-adapter';
 import { loadConfig } from './config';
 import { isExecutable, findOnPath, fetchLatestRelease, downloadAsset } from './binary';
+import { getCacheDir } from '../db/index';
 
 // ---------------------------------------------------------------------------
 // mpv binary resolution + auto-download
 // ---------------------------------------------------------------------------
 
-const MPV_CACHE_DIR = path.join(os.homedir(), '.cache', 'ytui', 'mpv');
+const MPV_CACHE_DIR = path.join(getCacheDir(), 'mpv');
 const MPV_BIN = path.join(MPV_CACHE_DIR, 'mpv.app', 'Contents', 'MacOS', 'mpv');
 let _mpvBin: string | null | undefined;
 

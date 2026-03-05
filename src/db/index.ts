@@ -17,6 +17,12 @@ export function getDataDir(): string {
   return dir;
 }
 
+export function getCacheDir(): string {
+  const dir = path.join(process.env.HOME ?? '~', '.cache', 'ytui');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 export function openDb(): ReturnType<typeof drizzle<typeof schema>> {
   const dbPath = path.join(getDataDir(), 'ytui.db');
   const sqlite = new Database(dbPath);

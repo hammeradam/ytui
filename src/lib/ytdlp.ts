@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getDataDir } from '../db/index';
+import { getCacheDir } from '../db/index';
 import { loadConfig, resolvedDownloadDir } from './config';
 import {
   IS_WIN, EXE,
@@ -41,7 +41,7 @@ export type DownloadResult = {
 let _ytdlpBin: string | null | undefined;
 
 function localBinPath(): string {
-  return path.join(getDataDir(), `yt-dlp${EXE}`);
+  return path.join(getCacheDir(), `yt-dlp${EXE}`);
 }
 
 export function resolveYtDlp(): string | null {
