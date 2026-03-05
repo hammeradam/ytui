@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
@@ -24,8 +24,6 @@ export function SearchView({ height }: Props): React.ReactElement {
   const downloadedIds = useMemo(() => new Set(tracks.map((t) => t.id)), [tracks]);
   const searchResultsLimit = useStore((s) => s.settings.searchResultsLimit);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const doSearch = useCallback(
     async (q: string) => {
       if (!q.trim()) { setResults([]); return; }
@@ -49,7 +47,6 @@ export function SearchView({ height }: Props): React.ReactElement {
       if (inputFocused) {
         if (key.return) {
           // Submit search or enqueue URL if YouTube link detected
-          if (debounceRef.current) clearTimeout(debounceRef.current);
           const q = inputVal.trim();
           if (q.includes('youtu')) {
             setInputFocused(false);
@@ -68,9 +65,6 @@ export function SearchView({ height }: Props): React.ReactElement {
         }
         if (!key.ctrl && !key.meta && input) {
           setInputVal((v) => v + input);
-          // Debounce auto-search
-          if (debounceRef.current) clearTimeout(debounceRef.current);
-          debounceRef.current = setTimeout(() => void doSearch(inputVal + input), 400);
           return;
         }
         return;
