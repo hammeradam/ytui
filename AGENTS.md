@@ -22,7 +22,7 @@
 
 - User has a **Hungarian keyboard** — avoid `[` and `]` as keybindings.
 - All terminal sizing flows from a single `useStdout()` call in `App.tsx`. `rows`/`cols` are stored in React state and updated via a `resize` listener so the layout reflows on terminal resize.
-- yt-dlp calls must include `--extractor-args 'youtube:player_client=ios,mweb'` to avoid the "No supported Javascript runtime" error on machines without Node.js installed.
+- yt-dlp calls must use `--extractor-args 'youtube:player_client=mediaconnect'`. The `ios` and `mweb` clients now require a GVS PO Token (YouTube change, 2025) and return HTTP 403. The `mediaconnect` client works without a JS runtime or PO token.
 - Release binaries are shipped as `.tar.gz` archives (not raw files) to preserve the executable bit, which GitHub Releases strips from raw uploads.
 - macOS binaries are ad-hoc signed (`codesign --sign -`) in the CI pipeline. This satisfies the code-signature check but does **not** notarize them — users will still need to allow the binary once in macOS Privacy & Security settings. Fixing this requires a paid Apple Developer account.
 - `ci:` commit messages do **not** trigger a new release. Only `feat:`, `fix:`, `perf:`, and breaking changes do.
@@ -69,12 +69,5 @@ src/
 
 ## Known remaining issues (from IMPROVEMENTS.md)
 
-- **#20** `openDb()` at startup doesn't populate the `db` singleton — should call `getDb()` instead.
-- **#21** `downloadedIds.includes(item.id)` is a substring match — should use a `Set`.
-- **#22** `playPrev` doesn't wrap in `repeat-all` mode.
-- **#23** `removeTrackFromPlaylist` delete-then-reinsert not wrapped in a transaction.
-- **#24** No keybinding to remove pending/done jobs from `DownloadQueue`.
-- **#25** `ProgressBar` in `PlayerBar.tsx` is a React component that returns a plain string — should be a regular function.
-- **#28** Playlist list shows no track count.
 - **#29** No yt-dlp update mechanism.
 - **#30** Downloads are strictly serial — no concurrency setting.

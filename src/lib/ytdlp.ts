@@ -296,9 +296,9 @@ export async function downloadAudio(
     '--no-playlist',
     '-o', outputTemplate,
     '--print', 'after_move:filepath',
-    // Avoid JS-runtime dependency (throttling decryption) by using the
-    // YouTube iOS / mobile web client which does not require it.
-    '--extractor-args', 'youtube:player_client=ios,mweb',
+    // Use the mediaconnect client — works without a JS runtime or PO token.
+    // ios/mweb now require a GVS PO Token (YouTube change, 2025) and fail with 403.
+    '--extractor-args', 'youtube:player_client=mediaconnect',
   ];
 
   if (cfg.audioQuality !== 'best') {
@@ -375,7 +375,7 @@ export async function fetchVideoInfo(videoIdOrUrl: string): Promise<SearchResult
     : `https://www.youtube.com/watch?v=${videoIdOrUrl}`;
 
   const proc = Bun.spawn(
-    [bin, '--dump-json', '--no-download', '--extractor-args', 'youtube:player_client=ios,mweb', url],
+    [bin, '--dump-json', '--no-download', '--extractor-args', 'youtube:player_client=mediaconnect', url],
     { stdout: 'pipe', stderr: 'pipe' },
   );
 
