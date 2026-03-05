@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { Box, useInput } from 'ink';
 
 type Props<T> = {
@@ -20,9 +20,9 @@ export function ScrollList<T>({
 }: Props<T>): React.ReactElement {
   const scrollOffsetRef = useRef(0);
 
-  // Derive the scroll offset for this render without mutating the ref.
-  // The ref is updated after the render is committed (useLayoutEffect) so
-  // it is ready for the next render — but never mutated mid-render.
+  // Derive scroll offset for this render as a pure local value — never
+  // mutate the ref during render (React may call render multiple times).
+  // Only scroll the window when the selection moves out of view.
   const maxOffset = Math.max(0, items.length - height);
   let scrollOffset = scrollOffsetRef.current;
   if (selectedIndex < scrollOffset) {
@@ -31,18 +31,14 @@ export function ScrollList<T>({
     scrollOffset = selectedIndex - height + 1;
   }
   scrollOffset = Math.min(scrollOffset, maxOffset);
-
-  useLayoutEffect(() => {
-    scrollOffsetRef.current = scrollOffset;
-  });
+  // Sync back after render so the next render starts from the right place.
+  scrollOffsetRef.current = scrollOffset;
 
   useInput((input, key) => {
     if (key.downArrow || input === 'j') {
-      const next = Math.min(selectedIndex + 1, items.length - 1);
-      onSelect(next);
+      onSelect(Math.min(selectedIndex + 1, items.length - 1));
     } else if (key.upArrow || input === 'k') {
-      const next = Math.max(selectedIndex - 1, 0);
-      onSelect(next);
+      onSelect(Math.max(selectedIndex - 1, 0));
     } else if (input === 'g') {
       onSelect(0);
     } else if (input === 'G') {
