@@ -352,8 +352,9 @@ export async function downloadAudio(
       for (const line of lines) {
         const t = line.trim();
         if (!t) continue;
-        // Progress lines look like: "[download]  42.3% of   3.45MiB at   1.23MiB/s ETA 00:01"
-        const prog = t.match(/\[download\]\s+([\d.]+)%.*?at\s+(\S+)\s+ETA\s+(\S+)/);
+        // Progress lines: "[download]  42.3% of  3.45MiB at  1.23MiB/s ETA 00:01"
+        // Speed can be "Unknown B/s" (two tokens) so match everything up to " ETA "
+        const prog = t.match(/\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+(.+?)\s+ETA\s+(\S+)/);
         if (prog) {
           onProgress?.({ percent: parseFloat(prog[1]!), speed: prog[2]!, eta: prog[3]! });
         }
