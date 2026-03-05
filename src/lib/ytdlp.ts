@@ -296,6 +296,9 @@ export async function downloadAudio(
     '--no-playlist',
     '-o', outputTemplate,
     '--print', 'after_move:filepath',
+    // Force progress lines even when stdout/stderr is not a TTY (pipe).
+    // --newline ensures each percentage update is on its own line.
+    '--progress', '--newline',
     // Use the mediaconnect client — works without a JS runtime or PO token.
     // ios/mweb now require a GVS PO Token (YouTube change, 2025) and fail with 403.
     '--extractor-args', 'youtube:player_client=mediaconnect',
