@@ -313,36 +313,59 @@ export async function downloadAudio(
   let finalPath = '';
   const decoder = new TextDecoder();
 
-  // Read stdout for final filepath (--print after_move:filepath) and progress
-  const reader = proc.stdout.getReader();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop() ?? '';
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t) continue;
-      // Progress lines look like: "[download]  42.3% of   3.45MiB at   1.23MiB/s ETA 00:01"
-      const prog = t.match(/\[download\]\s+([\d.]+)%.*?at\s+(\S+)\s+ETA\s+(\S+)/);
-      if (prog) {
-        onProgress?.({ percent: parseFloat(prog[1]!), speed: prog[2]!, eta: prog[3]! });
-        continue;
+  // yt-dlp writes [download] progress lines to stderr; --print filepath goes to stdout.
+  // Read both streams concurrently so progress fires while the download runs.
+
+  async function readStdout(): Promise<void> {
+    const reader = proc.stdout.getReader();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t) continue;
+        // --print after_move:filepath outputs the final path on stdout
+        if (t.startsWith('/') || t.startsWith('~') || /^[A-Za-z]:[/\\]/.test(t)) {
+          finalPath = t;
+        }
       }
-      // --print after_move:filepath outputs the final path
-      if (t.startsWith('/') || t.startsWith('~') || /^[A-Za-z]:[/\\]/.test(t)) {
-        finalPath = t;
+    }
+    if (buf.trim() && !finalPath) finalPath = buf.trim();
+  }
+
+  let stderrText = '';
+  async function readStderr(): Promise<void> {
+    const reader = proc.stderr.getReader();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      stderrText += chunk;
+      buf += chunk;
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t) continue;
+        // Progress lines look like: "[download]  42.3% of   3.45MiB at   1.23MiB/s ETA 00:01"
+        const prog = t.match(/\[download\]\s+([\d.]+)%.*?at\s+(\S+)\s+ETA\s+(\S+)/);
+        if (prog) {
+          onProgress?.({ percent: parseFloat(prog[1]!), speed: prog[2]!, eta: prog[3]! });
+        }
       }
     }
   }
-  if (buf.trim()) finalPath = finalPath || buf.trim();
+
+  await Promise.all([readStdout(), readStderr()]);
 
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    const errText = decoder.decode(await new Response(proc.stderr).arrayBuffer());
-    throw new Error(`yt-dlp exited with ${exitCode}: ${errText.slice(0, 300)}`);
+    throw new Error(`yt-dlp exited with ${exitCode}: ${stderrText.slice(0, 300)}`);
   }
 
   // If --print didn't give us the path, glob for it
