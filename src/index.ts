@@ -22,7 +22,6 @@ main().catch((e) => {
 const STOP_SIGNALS: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 for (const sig of STOP_SIGNALS) {
   process.on(sig, () => {
-    console.log(`Received ${sig}, shutting down...`);
     player.quit();
     process.exit(0);
   });
