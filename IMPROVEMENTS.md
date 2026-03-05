@@ -88,27 +88,27 @@ Jobs stuck in `error` state persist in memory but there is no way to retry them 
 
 ## Bug Fixes (Round 2)
 
-### 20. `openDb()` startup call doesn't populate the `db` singleton
+### ~~20. `openDb()` startup call doesn't populate the `db` singleton~~ ✓
 **Location:** `src/index.ts:6`, `src/db/index.ts`
 
 `main()` calls `openDb()` at startup to run migrations early, but `openDb()` does not assign the result to the `db` module-level variable. The first subsequent `getDb()` call (from any store action) therefore calls `openDb()` a second time, re-opening the database file and re-running the migration loop. `main()` should call `getDb()` instead of `openDb()`.
 
-### 21. `downloadedIds.includes(item.id)` is a substring match
+### ~~21. `downloadedIds.includes(item.id)` is a substring match~~ ✓
 **Location:** `src/tui/components/SearchView.tsx`
 
 `downloadedIds` is built with `s.tracks.map((t) => t.id).join(',')` and tested with `.includes(item.id)`. A YouTube ID that is a substring of a concatenated pair of other IDs would produce a false positive. Should use `useMemo` to construct a `Set<string>` from `s.tracks` and test membership with `.has(item.id)`.
 
-### 22. `playPrev` doesn't wrap around in `repeat-all` mode
+### ~~22. `playPrev` doesn't wrap around in `repeat-all` mode~~ ✓
 **Location:** `src/store/index.ts` — `playPrev`
 
 `playPrev` unconditionally clamps to `Math.max(0, queueIndex - 1)`, so at the first track in an `all`-repeat queue it stays stuck at index 0 instead of wrapping to the last track. `playNext` correctly handles the wrap; `playPrev` should mirror that logic for the lower bound.
 
-### 23. `removeTrackFromPlaylist` delete-then-reinsert not wrapped in a transaction
+### ~~23. `removeTrackFromPlaylist` delete-then-reinsert not wrapped in a transaction~~ ✓
 **Location:** `src/store/index.ts` — `removeTrackFromPlaylist`
 
 The implementation deletes all playlist rows then reinserts the survivors one-by-one. If the process is killed after the `DELETE` and before all `INSERT`s complete, the playlist loses all its tracks. The entire operation should be wrapped in a `db.transaction()` block to make it atomic.
 
-### 24. `DownloadQueue` has no keybinding to remove pending/done jobs
+### ~~24. `DownloadQueue` has no keybinding to remove pending/done jobs~~ ✓
 **Location:** `src/tui/components/DownloadQueue.tsx`
 
 `downloader.removeFromQueue(id)` already exists and guards against removing in-progress jobs, but no keybinding (`x` or `d`) is wired in `DownloadQueue.tsx`. Completed and pending jobs accumulate in the list indefinitely with no way to clear them from the UI.
@@ -117,7 +117,7 @@ The implementation deletes all playlist rows then reinserts the survivors one-by
 
 ## Code Cleanup (Round 2)
 
-### 25. `ProgressBar` in `PlayerBar.tsx` is a React component that returns a string
+### ~~25. `ProgressBar` in `PlayerBar.tsx` is a React component that returns a string~~ ✓
 **Location:** `src/tui/components/PlayerBar.tsx`
 
 `ProgressBar` is declared as a React functional component but simply returns a plain string of block characters. Treating it as a component adds React reconciler overhead and is non-idiomatic. It should be a regular function (returning `string`) called directly inside the JSX expression, not rendered as `<ProgressBar />`.
@@ -136,7 +136,7 @@ Once a status message like `"Queued: My Song"` is displayed, it remains on scree
 
 Standard music player behavior (Spotify, VLC, etc.): if more than ~3 seconds of the current track have elapsed, pressing "previous" seeks back to 0 rather than jumping to the prior track. A second press then goes to the previous track. `mpv-player.ts` already has `seekBy`; adding an absolute `seekTo(sec)` method would make this trivial to implement in `playPrev`.
 
-### 28. Playlist list shows no track count
+### ~~28. Playlist list shows no track count~~ ✓
 **Location:** `src/tui/components/PlaylistView.tsx`
 
 Each row in the playlists list renders only `pl.name`. Adding a `(n tracks)` count — loaded via `COUNT(*)` grouped by `playlistId` in `reloadPlaylists` — would let users see at a glance which playlists have content without having to open each one.

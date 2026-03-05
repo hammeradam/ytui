@@ -18,6 +18,7 @@ export function PlaylistView({ height }: Props): React.ReactElement {
   const playlists = useStore((s) => s.playlists);
   const activePlaylistId = useStore((s) => s.activePlaylistId);
   const playlistTracks = useStore((s) => s.playlistTracks);
+  const playlistTrackCounts = useStore((s) => s.playlistTrackCounts);
   const setActivePlaylistId = useStore((s) => s.setActivePlaylistId);
   const createPlaylist = useStore((s) => s.createPlaylist);
   const deletePlaylist = useStore((s) => s.deletePlaylist);
@@ -175,6 +176,7 @@ export function PlaylistView({ height }: Props): React.ReactElement {
               color={isSel ? 'white' : undefined}
             >
               {isSel ? '▶ ' : '  '}{pl.name}
+              <Text color={isSel ? 'white' : 'gray'}> ({playlistTrackCounts[pl.id] ?? 0})</Text>
             </Text>
           </Box>
         )}

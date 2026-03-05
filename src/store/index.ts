@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { eq, asc, and } from 'drizzle-orm';
+import { eq, asc, and, count } from 'drizzle-orm';
 import fs from 'node:fs';
 
 import { getDb, schema } from '../db/index';
@@ -51,6 +51,7 @@ export type AppState = {
   playlists: Playlist[];
   activePlaylistId: number | null;
   playlistTracks: Track[];
+  playlistTrackCounts: Record<number, number>; // playlistId -> track count
 
   // UI
   activeView: ActiveView;
@@ -135,6 +136,7 @@ export const useStore = create<AppState>((set, get) => {
   playlists: [],
   activePlaylistId: null,
   playlistTracks: [],
+  playlistTrackCounts: {},
 
   // UI
   activeView: 'search',
@@ -234,7 +236,7 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   playPrev: () => {
-    const { queue, queueIndex } = get();
+    const { queue, queueIndex, repeatMode } = get();
     if (queue.length === 0) return;
     // If more than 3 s have elapsed, restart the current track instead
     const elapsed = usePlayerStore.getState().time;
@@ -242,7 +244,14 @@ export const useStore = create<AppState>((set, get) => {
       player.seekTo(0);
       return;
     }
-    const prevIdx = Math.max(0, queueIndex - 1);
+    let prevIdx = queueIndex - 1;
+    if (prevIdx < 0) {
+      if (repeatMode === 'all') {
+        prevIdx = queue.length - 1;
+      } else {
+        prevIdx = 0;
+      }
+    }
     const t = queue[prevIdx];
     if (!t) return;
     set({ queueIndex: prevIdx });
@@ -268,7 +277,19 @@ export const useStore = create<AppState>((set, get) => {
       .select()
       .from(schema.playlists)
       .orderBy(asc(schema.playlists.createdAt));
-    set({ playlists: rows });
+    // Fetch track counts per playlist in one query
+    const countRows = await db
+      .select({
+        playlistId: schema.playlistTracks.playlistId,
+        trackCount: count(schema.playlistTracks.id),
+      })
+      .from(schema.playlistTracks)
+      .groupBy(schema.playlistTracks.playlistId);
+    const playlistTrackCounts: Record<number, number> = {};
+    for (const r of countRows) {
+      playlistTrackCounts[r.playlistId] = r.trackCount;
+    }
+    set({ playlists: rows, playlistTrackCounts });
   },
 
   setActivePlaylistId: (id) => {
@@ -337,30 +358,36 @@ export const useStore = create<AppState>((set, get) => {
   removeTrackFromPlaylist: async (playlistId, trackId) => {
     const db = getDb();
 
-    db.transaction(async (tx) => {
-      // Read current rows from DB (not store state) to avoid stale data
-      const rows = await tx
-        .select({
-          trackId: schema.playlistTracks.trackId,
-          addedAt: schema.playlistTracks.addedAt,
-        })
-        .from(schema.playlistTracks)
+    // Read current rows from DB first (source of truth)
+    const rows = await db
+      .select({
+        trackId: schema.playlistTracks.trackId,
+        addedAt: schema.playlistTracks.addedAt,
+      })
+      .from(schema.playlistTracks)
+      .where(eq(schema.playlistTracks.playlistId, playlistId))
+      .orderBy(asc(schema.playlistTracks.position));
+
+    const remaining = rows.filter((r) => r.trackId !== trackId);
+
+    // Wrap delete + reinsert in a synchronous transaction (bun:sqlite is sync)
+    db.transaction((tx) => {
+      tx.delete(schema.playlistTracks)
         .where(eq(schema.playlistTracks.playlistId, playlistId))
-        .orderBy(asc(schema.playlistTracks.position));
-      await tx
-        .delete(schema.playlistTracks)
-        .where(eq(schema.playlistTracks.playlistId, playlistId));
-      const remaining = rows.filter((r) => r.trackId !== trackId);
+        .run();
       for (let i = 0; i < remaining.length; i++) {
-        await tx.insert(schema.playlistTracks).values({
-          playlistId,
-          trackId: remaining[i]!.trackId,
-          position: i,
-          addedAt: remaining[i]!.addedAt,
-        });
+        tx.insert(schema.playlistTracks)
+          .values({
+            playlistId,
+            trackId: remaining[i]!.trackId,
+            position: i,
+            addedAt: remaining[i]!.addedAt,
+          })
+          .run();
       }
-      await get().reloadPlaylistTracks(playlistId);
     });
+
+    await get().reloadPlaylistTracks(playlistId);
   },
 
   moveTrackInPlaylist: async (playlistId, trackId, direction) => {

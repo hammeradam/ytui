@@ -28,6 +28,13 @@ export function DownloadQueue(): React.ReactElement {
       const job = queue[selectedIdx];
       if (job) downloader.retryJob(job.id);
     }
+    if (_input === 'd' || _input === 'x') {
+      const job = queue[selectedIdx];
+      if (job && job.status !== 'downloading') {
+        downloader.removeFromQueue(job.id);
+        setSelectedIdx((i) => Math.max(0, i - 1));
+      }
+    }
   });
 
   if (queue.length === 0) {
@@ -40,7 +47,7 @@ export function DownloadQueue(): React.ReactElement {
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Text color="white"> {queue.length} jobs · r to retry errored</Text>
+      <Text color="white"> {queue.length} jobs · r retry errored · d remove pending/done</Text>
       {queue.map((job, i) => (
         <Box key={job.id} flexDirection="column" marginBottom={1}>
           <Box>
