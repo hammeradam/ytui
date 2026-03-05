@@ -25,66 +25,7 @@ jobs:
 
       - name: Compute version bump
         id: bump
-        shell: bash
-        run: |
-          LAST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' \
-                       --sort=-version:refname | head -1)
-
-          if [ -z "$LAST_TAG" ]; then
-            BASE=$(node -p "require('./package.json').version")
-            RANGE="HEAD"
-            echo "No previous tag — base version from package.json: $BASE"
-          else
-            BASE="${LAST_TAG#v}"
-            RANGE="${LAST_TAG}..HEAD"
-            echo "Last tag: $LAST_TAG  →  base: $BASE"
-          fi
-
-          COMMITS=$(git log "$RANGE" --format="%s" 2>/dev/null || git log --format="%s")
-
-          if [ -z "$COMMITS" ]; then
-            echo "No commits since last tag — skipping release."
-            echo "release_needed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          MAJOR=0; MINOR=0; PATCH=0
-          while IFS= read -r msg; do
-            if echo "$msg" | grep -qE '^[a-z]+(\([^)]+\))?!:' || \
-               echo "$msg" | grep -qiE 'BREAKING[[:space:]]CHANGE'; then
-              MAJOR=1
-            elif echo "$msg" | grep -qE '^feat(\([^)]+\))?:'; then
-              MINOR=1
-            elif echo "$msg" | grep -qE '^(fix|perf)(\([^)]+\))?:'; then
-              PATCH=1
-            fi
-          done <<< "$COMMITS"
-
-          if [ "$MAJOR" -eq 0 ] && [ "$MINOR" -eq 0 ] && [ "$PATCH" -eq 0 ]; then
-            echo "No releasable commits — skipping."
-            echo "release_needed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          IFS='.' read -r VMAJ VMIN VPAT <<< "$BASE"
-          if   [ "$MAJOR" -eq 1 ]; then VMAJ=$((VMAJ+1)); VMIN=0; VPAT=0
-          elif [ "$MINOR" -eq 1 ]; then VMIN=$((VMIN+1)); VPAT=0
-          else                           VPAT=$((VPAT+1))
-          fi
-
-          NEXT="${VMAJ}.${VMIN}.${VPAT}"
-          echo "Next version: $NEXT"
-          echo "next_version=$NEXT"  >> "$GITHUB_OUTPUT"
-          echo "release_needed=true" >> "$GITHUB_OUTPUT"
-
-          {
-            echo "changelog<<CHANGELOG_EOF"
-            echo "## What's changed"
-            echo ""
-            git log "$RANGE" --format="- %s (%h)" 2>/dev/null || git log --format="- %s (%h)"
-            echo "CHANGELOG_EOF"
-          } >> "$GITHUB_OUTPUT"
-
+        run: bash scripts/compute-version.sh
   # ────────────────────────────────────────────────────────────────────────────
   # 2. Cross-compile all binaries on ubuntu, upload as artifacts
   # ────────────────────────────────────────────────────────────────────────────
