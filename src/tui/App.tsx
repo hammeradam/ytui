@@ -50,6 +50,7 @@ export function App(): React.ReactElement {
   const activeView = useStore((s) => s.activeView);
   const setActiveView = useStore((s) => s.setActiveView);
   const statusMsg = useStore((s) => s.statusMsg);
+  const inputFocused = useStore((s) => s.inputFocused);
   const setDownloadQueue = useStore((s) => s.setDownloadQueue);
   const reloadTracks = useStore((s) => s.reloadTracks);
   const reloadPlaylists = useStore((s) => s.reloadPlaylists);
@@ -85,6 +86,9 @@ export function App(): React.ReactElement {
 
   // Global keybindings
   useInput((input, key) => {
+    // Suppress all global hotkeys while a text input field has focus
+    if (inputFocused) return;
+
     // Let view-local handlers own all input when on settings (or help)
     const viewOwnsInput = activeView === 'settings' || activeView === 'help';
 

@@ -56,6 +56,8 @@ export type AppState = {
   // UI
   activeView: ActiveView;
   statusMsg: string;
+  /** True while a text input field in any view has keyboard focus. Suppresses global hotkeys. */
+  inputFocused: boolean;
 
   // Settings
   settings: Config;
@@ -104,6 +106,7 @@ export type AppState = {
   setActiveView: (v: ActiveView) => void;
   setStatusMsg: (msg: string) => void;
   setSettings: (c: Config) => void;
+  setInputFocused: (v: boolean) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -141,6 +144,7 @@ export const useStore = create<AppState>((set, get) => {
   // UI
   activeView: 'search',
   statusMsg: '',
+  inputFocused: false,
 
   // Settings
   settings: loadConfig(),
@@ -432,7 +436,8 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   // --- UI actions ---
-  setActiveView: (v) => set({ activeView: v }),
+  setActiveView: (v) => set({ activeView: v, inputFocused: false }),
+  setInputFocused: (v) => set({ inputFocused: v }),
   setStatusMsg: (msg) => {
     if (statusTimer !== null) { clearTimeout(statusTimer); statusTimer = null; }
     set({ statusMsg: msg });

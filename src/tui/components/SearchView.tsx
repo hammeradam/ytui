@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import { useStore } from '../../store/index';
@@ -20,10 +20,17 @@ export function SearchView({ height }: Props): React.ReactElement {
   const setLoading = useStore((s) => s.setSearchLoading);
   const setError = useStore((s) => s.setSearchError);
   const setStatusMsg = useStore((s) => s.setStatusMsg);
+  const setGlobalInputFocused = useStore((s) => s.setInputFocused);
   const tracks = useStore((s) => s.tracks);
   const downloadedIds = useMemo(() => new Set(tracks.map((t) => t.id)), [tracks]);
   const searchResultsLimit = useStore((s) => s.settings.searchResultsLimit);
   const youtubeApiKey = useStore((s) => s.settings.youtubeApiKey);
+
+  // Sync local input focus state to the global store so App.tsx can suppress hotkeys
+  useEffect(() => {
+    setGlobalInputFocused(inputFocused);
+    return () => setGlobalInputFocused(false);
+  }, [inputFocused, setGlobalInputFocused]);
 
   const doSearch = useCallback(
     async (q: string) => {
