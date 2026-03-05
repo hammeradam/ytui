@@ -21,13 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history so we can walk commits back to last tag
+          fetch-depth: 0
 
       - name: Compute version bump
         id: bump
         shell: bash
         run: |
-          # ── find the last semver tag ──────────────────────────────────────
           LAST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' \
                        --sort=-version:refname | head -1)
 
@@ -41,9 +40,7 @@ jobs:
             echo "Last tag: $LAST_TAG  →  base: $BASE"
           fi
 
-          # ── collect commits in range ──────────────────────────────────────
-          COMMITS=$(git log "$RANGE" --format="%s" 2>/dev/null || \
-                    git log        --format="%s")
+          COMMITS=$(git log "$RANGE" --format="%s" 2>/dev/null || git log --format="%s")
 
           if [ -z "$COMMITS" ]; then
             echo "No commits since last tag — skipping release."
@@ -51,9 +48,7 @@ jobs:
             exit 0
           fi
 
-          # ── classify bump ─────────────────────────────────────────────────
           MAJOR=0; MINOR=0; PATCH=0
-
           while IFS= read -r msg; do
             if echo "$msg" | grep -qE '^[a-z]+(\([^)]+\))?!:' || \
                echo "$msg" | grep -qiE 'BREAKING[[:space:]]CHANGE'; then
@@ -66,12 +61,11 @@ jobs:
           done <<< "$COMMITS"
 
           if [ "$MAJOR" -eq 0 ] && [ "$MINOR" -eq 0 ] && [ "$PATCH" -eq 0 ]; then
-            echo "No releasable commits (no feat/fix/perf/breaking) — skipping."
+            echo "No releasable commits — skipping."
             echo "release_needed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # ── compute new version ───────────────────────────────────────────
           IFS='.' read -r VMAJ VMIN VPAT <<< "$BASE"
           if   [ "$MAJOR" -eq 1 ]; then VMAJ=$((VMAJ+1)); VMIN=0; VPAT=0
           elif [ "$MINOR" -eq 1 ]; then VMIN=$((VMIN+1)); VPAT=0
@@ -83,22 +77,81 @@ jobs:
           echo "next_version=$NEXT"  >> "$GITHUB_OUTPUT"
           echo "release_needed=true" >> "$GITHUB_OUTPUT"
 
-          # ── build changelog ───────────────────────────────────────────────
           {
             echo "changelog<<CHANGELOG_EOF"
             echo "## What's changed"
             echo ""
-            git log "$RANGE" --format="- %s (%h)" 2>/dev/null || \
-            git log          --format="- %s (%h)"
+            git log "$RANGE" --format="- %s (%h)" 2>/dev/null || git log --format="- %s (%h)"
             echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
   # ────────────────────────────────────────────────────────────────────────────
-  # 2. Build all targets + tag + release  (single ubuntu runner, cross-compile)
+  # 2. Cross-compile all binaries on ubuntu, upload as artifacts
+  # ────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build binaries
+    needs: version
+    if: needs.version.outputs.release_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Bundle migrations
+        run: bun scripts/bundle-migrations.ts
+
+      - name: Build binaries
+        run: |
+          bun build --compile --target=bun-darwin-arm64 --outfile dist/ytui-macos-arm64  ./src/index.ts
+          bun build --compile --target=bun-darwin-x64   --outfile dist/ytui-macos-x86_64 ./src/index.ts
+          bun build --compile --target=bun-linux-x64    --outfile dist/ytui-linux-x86_64 ./src/index.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Ad-hoc sign macOS binaries (codesign is a macOS-only tool)
+  # ────────────────────────────────────────────────────────────────────────────
+  sign-macos:
+    name: Sign macOS binaries
+    needs: [version, build]
+    if: needs.version.outputs.release_needed == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+      - name: Ad-hoc codesign
+        run: |
+          chmod +x dist/ytui-macos-arm64 dist/ytui-macos-x86_64
+          codesign --sign - --force --preserve-metadata=entitlements \
+            dist/ytui-macos-arm64
+          codesign --sign - --force --preserve-metadata=entitlements \
+            dist/ytui-macos-x86_64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-signed
+          path: dist/
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 4. Bump version, tag, create GitHub Release
   # ────────────────────────────────────────────────────────────────────────────
   release:
     name: Release
-    needs: version
+    needs: [version, build, sign-macos]
     if: needs.version.outputs.release_needed == 'true'
     runs-on: ubuntu-latest
     env:
@@ -109,23 +162,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Download signed binaries
+        uses: actions/download-artifact@v4
         with:
-          bun-version: latest
+          name: binaries-signed
+          path: dist/
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      # Linux binary wasn't re-uploaded in sign-macos — grab it from the
+      # original artifact and merge into dist/
+      - name: Download linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist-orig/
 
-      # Generate migrations.generated.ts (needed by the build)
-      - name: Bundle migrations
-        run: bun scripts/bundle-migrations.ts
-
-      # Cross-compile all three targets in one job — no macOS runners needed
-      - name: Build binaries
-        run: |
-          bun build --compile --target=bun-darwin-arm64  --outfile dist/ytui-macos-arm64   ./src/index.ts
-          bun build --compile --target=bun-darwin-x64    --outfile dist/ytui-macos-x86_64  ./src/index.ts
-          bun build --compile --target=bun-linux-x64     --outfile dist/ytui-linux-x86_64  ./src/index.ts
+      - name: Merge linux binary
+        run: cp dist-orig/ytui-linux-x86_64 dist/ytui-linux-x86_64
 
       - name: Configure git identity
         run: |
