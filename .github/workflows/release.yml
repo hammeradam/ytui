@@ -1,0 +1,198 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. Determine the next version from conventional commits
+  # ────────────────────────────────────────────────────────────────────────────
+  version:
+    name: Compute next version
+    runs-on: ubuntu-latest
+    outputs:
+      next_version: ${{ steps.bump.outputs.next_version }}
+      release_needed: ${{ steps.bump.outputs.release_needed }}
+      changelog: ${{ steps.bump.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so we can walk commits back to last tag
+
+      - name: Compute version bump
+        id: bump
+        shell: bash
+        run: |
+          # ── find the last semver tag ──────────────────────────────────────
+          LAST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' \
+                       --sort=-version:refname | head -1)
+
+          if [ -z "$LAST_TAG" ]; then
+            # No previous tag — use the version in package.json as the base
+            BASE=$(node -p "require('./package.json').version")
+            RANGE="HEAD"
+            echo "No previous tag found; base version from package.json: $BASE"
+          else
+            BASE="${LAST_TAG#v}"
+            RANGE="${LAST_TAG}..HEAD"
+            echo "Last tag: $LAST_TAG  →  base version: $BASE"
+          fi
+
+          # ── collect commits in range ──────────────────────────────────────
+          COMMITS=$(git log "$RANGE" --format="%s" 2>/dev/null || \
+                    git log        --format="%s")
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits since last tag — skipping release."
+            echo "release_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ── classify bump ─────────────────────────────────────────────────
+          MAJOR=0; MINOR=0; PATCH=0
+
+          while IFS= read -r msg; do
+            # breaking change: footer "BREAKING CHANGE:" or "!" after type
+            if echo "$msg" | grep -qE '^[a-z]+(\([^)]+\))?!:' || \
+               echo "$msg" | grep -qiE 'BREAKING[[:space:]]CHANGE'; then
+              MAJOR=1
+            elif echo "$msg" | grep -qE '^feat(\([^)]+\))?:'; then
+              MINOR=1
+            elif echo "$msg" | grep -qE '^(fix|perf)(\([^)]+\))?:'; then
+              PATCH=1
+            fi
+          done <<< "$COMMITS"
+
+          if [ "$MAJOR" -eq 0 ] && [ "$MINOR" -eq 0 ] && [ "$PATCH" -eq 0 ]; then
+            echo "No releasable commits (no feat/fix/perf/breaking) — skipping release."
+            echo "release_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ── compute new version ───────────────────────────────────────────
+          IFS='.' read -r VMAJ VMIN VPAT <<< "$BASE"
+          if [ "$MAJOR" -eq 1 ]; then
+            VMAJ=$((VMAJ+1)); VMIN=0; VPAT=0
+          elif [ "$MINOR" -eq 1 ]; then
+            VMIN=$((VMIN+1)); VPAT=0
+          else
+            VPAT=$((VPAT+1))
+          fi
+
+          NEXT="${VMAJ}.${VMIN}.${VPAT}"
+          echo "Next version: $NEXT"
+          echo "next_version=$NEXT"   >> "$GITHUB_OUTPUT"
+          echo "release_needed=true"  >> "$GITHUB_OUTPUT"
+
+          # ── build changelog ───────────────────────────────────────────────
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            echo "## What's changed"
+            echo ""
+            git log "$RANGE" --format="- %s (%h)" 2>/dev/null || \
+            git log          --format="- %s (%h)"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. Build binaries (matrix: macOS arm64, macOS x86_64, Linux x86_64)
+  # ────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build ${{ matrix.target }}
+    needs: version
+    if: needs.version.outputs.release_needed == 'true'
+    strategy:
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-latest          # GitHub's macos-latest is arm64
+            asset_name: ytui-macos-arm64
+          - target: macos-x86_64
+            os: macos-13              # last Intel runner
+            asset_name: ytui-macos-x86_64
+          - target: linux-x86_64
+            os: ubuntu-latest
+            asset_name: ytui-linux-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build binary
+        run: bun run build
+        env:
+          # Disable telemetry
+          DO_NOT_TRACK: 1
+
+      - name: Rename binary
+        run: mv ytui ${{ matrix.asset_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Tag, bump package.json, create GitHub Release
+  # ────────────────────────────────────────────────────────────────────────────
+  release:
+    name: Create release v${{ needs.version.outputs.next_version }}
+    needs: [version, build]
+    if: needs.version.outputs.release_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump package.json version
+        run: |
+          VERSION=${{ needs.version.outputs.next_version }}
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          git add package.json
+          git commit -m "chore(release): v$VERSION [skip ci]"
+          git push
+
+      - name: Create and push tag
+        run: |
+          VERSION=${{ needs.version.outputs.next_version }}
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.next_version }}
+          name: v${{ needs.version.outputs.next_version }}
+          body: ${{ needs.version.outputs.changelog }}
+          files: |
+            dist/ytui-macos-arm64/ytui-macos-arm64
+            dist/ytui-macos-x86_64/ytui-macos-x86_64
+            dist/ytui-linux-x86_64/ytui-linux-x86_64
