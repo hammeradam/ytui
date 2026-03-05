@@ -144,7 +144,7 @@ export const useStore = create<AppState>((set, get) => {
   // UI
   activeView: 'search',
   statusMsg: '',
-  inputFocused: false,
+  inputFocused: true,
 
   // Settings
   settings: loadConfig(),
@@ -436,7 +436,7 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   // --- UI actions ---
-  setActiveView: (v) => set({ activeView: v, inputFocused: false }),
+  setActiveView: (v) => set({ activeView: v, inputFocused: v === 'search' }),
   setInputFocused: (v) => set({ inputFocused: v }),
   setStatusMsg: (msg) => {
     if (statusTimer !== null) { clearTimeout(statusTimer); statusTimer = null; }
