@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
 import { useStore, type ActiveView } from '../store/index';
@@ -34,8 +34,18 @@ const VIEW_ACTIONS = [
 export function App(): React.ReactElement {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const rows = stdout?.rows ?? 24;
-  const cols = stdout?.columns ?? 80;
+  const [rows, setRows] = useState(() => stdout?.rows ?? 24);
+  const [cols, setCols] = useState(() => stdout?.columns ?? 80);
+
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => {
+      setRows(stdout.rows);
+      setCols(stdout.columns);
+    };
+    stdout.on('resize', onResize);
+    return () => { stdout.off('resize', onResize); };
+  }, [stdout]);
 
   const activeView = useStore((s) => s.activeView);
   const setActiveView = useStore((s) => s.setActiveView);
