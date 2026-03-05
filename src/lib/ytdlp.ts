@@ -299,12 +299,6 @@ export async function downloadAudio(
     // Force progress lines even when stdout/stderr is not a TTY (pipe).
     // --newline ensures each percentage update is on its own line.
     '--progress', '--newline',
-    // android_vr works without a PO token and produces no warnings.
-    // mediaconnect was removed in yt-dlp 2026.x; ios/mweb require a GVS PO Token.
-    // Use bun as the JS runtime (we're already running inside Bun) to silence
-    // the "no supported JS runtime" warning.
-    '--extractor-args', 'youtube:player_client=android_vr',
-    '--no-js-runtimes', '--js-runtimes', 'bun',
   ];
 
   if (cfg.audioQuality !== 'best') {
@@ -383,10 +377,7 @@ export async function fetchVideoInfo(videoIdOrUrl: string): Promise<SearchResult
     : `https://www.youtube.com/watch?v=${videoIdOrUrl}`;
 
   const proc = Bun.spawn(
-    [bin, '--dump-json', '--no-download',
-     '--extractor-args', 'youtube:player_client=android_vr',
-     '--no-js-runtimes', '--js-runtimes', 'bun',
-     url],
+    [bin, '--dump-json', '--no-download', url],
     { stdout: 'pipe', stderr: 'pipe' },
   );
 
