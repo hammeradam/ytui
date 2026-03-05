@@ -296,7 +296,7 @@ export async function downloadAudio(
     '--no-playlist',
     '-o', outputTemplate,
     '--print', 'after_move:filepath',
-    // Emit progress as JSON objects, one per line. Much cleaner than regex parsing text.
+    '--progress',
     '--progress-template', '%(progress)j',
     '--newline',
   ];
