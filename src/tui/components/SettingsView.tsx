@@ -64,7 +64,8 @@ type GeneralSetting =
   | IntSetting<'defaultVolume'>
   | IntSetting<'restartThreshold'>
   | StrSetting<'mpvSocketPath'>
-  | StrSetting<'downloadDir'>;
+  | StrSetting<'downloadDir'>
+  | StrSetting<'youtubeApiKey'>;
 
 type Item = GeneralSetting | HotkeySetting | SectionHeader;
 
@@ -128,6 +129,13 @@ const GENERAL_SETTINGS: GeneralSetting[] = [
       { value: 20, label: '20' },
       { value: 25, label: '25' },
     ],
+  },
+  {
+    kind: 'str',
+    key: 'youtubeApiKey',
+    label: 'YouTube API key',
+    description: 'Google API key for YouTube Data API v3 — enables fast search (~1 s vs ~12 s). Leave empty to use yt-dlp for search.',
+    placeholder: '(not set — using yt-dlp for search)',
   },
   {
     kind: 'str',
@@ -257,6 +265,17 @@ const SELECTABLE: number[] = ALL_ITEMS.reduce<number[]>((acc, item, i) => {
   if (item.kind !== 'section') acc.push(i);
   return acc;
 }, []);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Partially mask a secret string for display, showing only first/last 4 chars. */
+function maskSecret(s: string): string {
+  if (!s) return '';
+  if (s.length <= 8) return '●'.repeat(s.length);
+  return `${s.slice(0, 4)}${'●'.repeat(Math.min(s.length - 8, 20))}${s.slice(-4)}`;
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -433,10 +452,11 @@ export function SettingsView(): React.ReactElement {
             ).options.find((o) => o.value === rawValue);
             valueDisplay = opt?.label ?? String(rawValue);
           } else {
-            valueDisplay = String(
-              rawValue ||
-                (setting as StrSetting<typeof setting.key>).placeholder,
-            );
+            const strVal = String(rawValue ?? '');
+            const isSecret = setting.key === 'youtubeApiKey';
+            const masked = isSecret ? maskSecret(strVal) : strVal;
+            valueDisplay = masked ||
+              (setting as StrSetting<typeof setting.key>).placeholder;
           }
 
           const isEditingThis = isSelected && editing;

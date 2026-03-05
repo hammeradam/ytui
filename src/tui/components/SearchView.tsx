@@ -23,6 +23,7 @@ export function SearchView({ height }: Props): React.ReactElement {
   const tracks = useStore((s) => s.tracks);
   const downloadedIds = useMemo(() => new Set(tracks.map((t) => t.id)), [tracks]);
   const searchResultsLimit = useStore((s) => s.settings.searchResultsLimit);
+  const youtubeApiKey = useStore((s) => s.settings.youtubeApiKey);
 
   const doSearch = useCallback(
     async (q: string) => {
@@ -30,7 +31,7 @@ export function SearchView({ height }: Props): React.ReactElement {
       setLoading(true);
       setError('');
       try {
-        const res = await searchYouTube(q.trim(), searchResultsLimit);
+        const res = await searchYouTube(q.trim(), searchResultsLimit, youtubeApiKey);
         setResults(res);
         setSelectedIdx(0);
       } catch (e: unknown) {
@@ -39,7 +40,7 @@ export function SearchView({ height }: Props): React.ReactElement {
         setLoading(false);
       }
     },
-    [setResults, setLoading, setError],
+    [setResults, setLoading, setError, searchResultsLimit, youtubeApiKey],
   );
 
   useInput(
@@ -102,10 +103,10 @@ export function SearchView({ height }: Props): React.ReactElement {
           <Text color="white"> No results</Text>
         )}
         {!loading && !error && results.length > 0 && (
-          <Text color="white"> {results.length} results · Enter to download · / to search</Text>
+          <Text color="white"> {results.length} results · Enter to download · / to search{youtubeApiKey ? ' · YouTube API' : ''}</Text>
         )}
         {!inputVal && !loading && (
-          <Text color="white"> Type to search YouTube · paste a URL to download directly</Text>
+          <Text color="white"> Type to search YouTube · paste a URL to download directly{youtubeApiKey ? '' : ' · add a YouTube API key in Settings (5) for faster search'}</Text>
         )}
       </Box>
 

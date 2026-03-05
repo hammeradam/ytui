@@ -55,6 +55,8 @@ export type Config = {
   mpvSocketPath: string;
   /** Directory where audio files are saved. Empty = default (~/.ytui/music). */
   downloadDir: string;
+  /** Google API key for YouTube Data API v3. When set, search uses the official API instead of yt-dlp. */
+  youtubeApiKey: string;
   /** Keyboard shortcuts for each action. */
   hotkeys: Hotkeys;
 };
@@ -86,6 +88,7 @@ export const CONFIG_DEFAULTS: Config = {
   restartThreshold:    5,
   mpvSocketPath:       '/tmp/mpv.sock',
   downloadDir:         '',
+  youtubeApiKey:       '',
   hotkeys:             { ...DEFAULT_HOTKEYS },
 };
 

@@ -116,12 +116,96 @@ export async function ensureYtDlp(
 }
 
 // ---------------------------------------------------------------------------
-// Search
+// Search — YouTube Data API v3 (fast path, requires API key)
+// ---------------------------------------------------------------------------
+
+/** Parse an ISO 8601 duration string (e.g. "PT3M45S") into seconds. */
+function parseIsoDuration(iso: string): number {
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (Number(m[1] ?? 0) * 3600) + (Number(m[2] ?? 0) * 60) + Number(m[3] ?? 0);
+}
+
+async function searchYouTubeApi(
+  query: string,
+  maxResults: number,
+  apiKey: string,
+): Promise<SearchResult[]> {
+  // Step 1: search.list — get video IDs, titles, channel names, thumbnails
+  const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
+  searchUrl.searchParams.set('part', 'snippet');
+  searchUrl.searchParams.set('type', 'video');
+  searchUrl.searchParams.set('q', query);
+  searchUrl.searchParams.set('maxResults', String(maxResults));
+  searchUrl.searchParams.set('key', apiKey);
+
+  const searchRes = await fetch(searchUrl.toString());
+  if (!searchRes.ok) {
+    const body = await searchRes.text();
+    throw new Error(`YouTube API search failed (${searchRes.status}): ${body.slice(0, 300)}`);
+  }
+
+  const searchData = await searchRes.json() as {
+    items?: Array<{
+      id: { videoId: string };
+      snippet: {
+        title: string;
+        channelTitle: string;
+        thumbnails?: { default?: { url: string } };
+      };
+    }>;
+  };
+
+  const items = searchData.items ?? [];
+  if (items.length === 0) return [];
+
+  const ids = items.map((it) => it.id.videoId);
+
+  // Step 2: videos.list — get durations for all IDs in one request
+  const videosUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
+  videosUrl.searchParams.set('part', 'contentDetails');
+  videosUrl.searchParams.set('id', ids.join(','));
+  videosUrl.searchParams.set('key', apiKey);
+
+  const videosRes = await fetch(videosUrl.toString());
+  const durationMap = new Map<string, number>();
+  if (videosRes.ok) {
+    const videosData = await videosRes.json() as {
+      items?: Array<{ id: string; contentDetails: { duration: string } }>;
+    };
+    for (const v of videosData.items ?? []) {
+      durationMap.set(v.id, parseIsoDuration(v.contentDetails.duration));
+    }
+  }
+
+  return items.map((it) => ({
+    id: it.id.videoId,
+    title: it.snippet.title,
+    channel: it.snippet.channelTitle,
+    duration: durationMap.get(it.id.videoId) ?? 0,
+    thumbnailUrl: it.snippet.thumbnails?.default?.url ?? '',
+    url: `https://www.youtube.com/watch?v=${it.id.videoId}`,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Search — public entry point (API key → fast path, else yt-dlp fallback)
 // ---------------------------------------------------------------------------
 
 export async function searchYouTube(
   query: string,
   maxResults = 20,
+  apiKey = '',
+): Promise<SearchResult[]> {
+  if (apiKey.trim()) {
+    return searchYouTubeApi(query, maxResults, apiKey.trim());
+  }
+  return searchYouTubeFallback(query, maxResults);
+}
+
+async function searchYouTubeFallback(
+  query: string,
+  maxResults: number,
 ): Promise<SearchResult[]> {
   const bin = resolveYtDlp();
   if (!bin) throw new Error('yt-dlp not available');
@@ -134,9 +218,6 @@ export async function searchYouTube(
       '--no-download',
       '--no-playlist',
       '--flat-playlist',
-      // Avoid JS-runtime dependency (throttling decryption) by using the
-      // YouTube iOS / mobile web client which does not require it.
-      '--extractor-args', 'youtube:player_client=ios,mweb',
     ],
     { stdout: 'pipe', stderr: 'pipe' },
   );
