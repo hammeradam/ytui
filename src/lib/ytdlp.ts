@@ -296,9 +296,9 @@ export async function downloadAudio(
     '--no-playlist',
     '-o', outputTemplate,
     '--print', 'after_move:filepath',
-    // Force progress lines even when stdout/stderr is not a TTY (pipe).
-    // --newline ensures each percentage update is on its own line.
-    '--progress', '--newline',
+    // Emit progress as JSON objects, one per line. Much cleaner than regex parsing text.
+    '--progress-template', '%(progress)j',
+    '--newline',
   ];
 
   if (cfg.audioQuality !== 'best') {
@@ -312,8 +312,8 @@ export async function downloadAudio(
 
   let finalPath = '';
 
-  // When --print is used, yt-dlp sends ALL output (including [download] progress)
-  // to stdout. stderr only gets warnings/errors.
+  // When --print is used, yt-dlp sends all output to stdout.
+  // Progress is emitted as JSON objects via --progress-template '%(progress)j'.
   const stdoutDecoder = new TextDecoder();
   const reader = proc.stdout.getReader();
   let buf = '';
@@ -326,13 +326,32 @@ export async function downloadAudio(
     for (const line of lines) {
       const t = line.trim();
       if (!t) continue;
-      // Progress lines: "[download]  42.3% of  3.45MiB at  1.23MiB/s ETA 00:01"
-      // Speed can be "Unknown B/s" (two tokens) so match everything up to " ETA "
-      const prog = t.match(/\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+(.+?)\s+ETA\s+(\S+)/);
-      if (prog) {
-        onProgress?.({ percent: parseFloat(prog[1]!), speed: prog[2]!, eta: prog[3]! });
-        continue;
+      
+      // Try to parse as JSON progress object
+      if (t.startsWith('{')) {
+        try {
+          const prog = JSON.parse(t) as {
+            status?: string;
+            downloaded_bytes?: number;
+            total_bytes?: number;
+            speed?: number;
+            eta?: number;
+            _percent_str?: string;
+            _speed_str?: string;
+            _eta_str?: string;
+          };
+          if (prog.status === 'downloading' && prog.total_bytes && prog.speed !== null) {
+            const percent = (prog.downloaded_bytes ?? 0) / prog.total_bytes * 100;
+            const speedStr = prog._speed_str?.trim() ?? '';
+            const etaStr = prog._eta_str?.trim() ?? '';
+            onProgress?.({ percent, speed: speedStr, eta: etaStr });
+          }
+          continue;
+        } catch {
+          // Not JSON, fall through
+        }
       }
+      
       // --print after_move:filepath outputs the final path on stdout
       if (t.startsWith('/') || t.startsWith('~') || /^[A-Za-z]:[/\\]/.test(t)) {
         finalPath = t;
