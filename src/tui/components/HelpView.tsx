@@ -51,9 +51,9 @@ export function HelpView(): React.ReactElement {
       <Text> </Text>
       {rows.map((row, i) =>
         row === null
-          ? <Text key={i}> </Text>
+          ? <Text key={`spacer-${i}`}> </Text>
           : (
-            <Box key={i} gap={2}>
+            <Box key={`${row[0]}-${row[1]}`} gap={2}>
               <Text color="yellow">{row[0].padEnd(14)}</Text>
               <Text>{row[1]}</Text>
             </Box>

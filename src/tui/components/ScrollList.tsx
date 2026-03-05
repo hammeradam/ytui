@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { Box, useInput } from 'ink';
 
 type Props<T> = {
@@ -20,14 +20,21 @@ export function ScrollList<T>({
 }: Props<T>): React.ReactElement {
   const scrollOffsetRef = useRef(0);
 
-  // Keep selected item in view
+  // Derive the scroll offset for this render without mutating the ref.
+  // The ref is updated after the render is committed (useLayoutEffect) so
+  // it is ready for the next render — but never mutated mid-render.
   const maxOffset = Math.max(0, items.length - height);
-  if (selectedIndex < scrollOffsetRef.current) {
-    scrollOffsetRef.current = selectedIndex;
-  } else if (selectedIndex >= scrollOffsetRef.current + height) {
-    scrollOffsetRef.current = selectedIndex - height + 1;
+  let scrollOffset = scrollOffsetRef.current;
+  if (selectedIndex < scrollOffset) {
+    scrollOffset = selectedIndex;
+  } else if (selectedIndex >= scrollOffset + height) {
+    scrollOffset = selectedIndex - height + 1;
   }
-  scrollOffsetRef.current = Math.min(scrollOffsetRef.current, maxOffset);
+  scrollOffset = Math.min(scrollOffset, maxOffset);
+
+  useLayoutEffect(() => {
+    scrollOffsetRef.current = scrollOffset;
+  });
 
   useInput((input, key) => {
     if (key.downArrow || input === 'j') {
@@ -43,12 +50,12 @@ export function ScrollList<T>({
     }
   }, { isActive });
 
-  const visible = items.slice(scrollOffsetRef.current, scrollOffsetRef.current + height);
+  const visible = items.slice(scrollOffset, scrollOffset + height);
 
   return (
     <Box flexDirection="column" height={height} overflow="hidden">
       {visible.map((item, vi) => {
-        const absIdx = vi + scrollOffsetRef.current;
+        const absIdx = vi + scrollOffset;
         return (
           <Box key={absIdx}>
             {renderItem(item, absIdx, absIdx === selectedIndex)}
