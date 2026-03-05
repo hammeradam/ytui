@@ -1,9 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { spawnSync } from 'node:child_process';
 import { getDataDir } from '../db/index';
 import { loadConfig, resolvedDownloadDir } from './config';
+import {
+  IS_WIN, EXE,
+  isExecutable, findOnPath,
+  fetchLatestRelease, downloadAsset,
+} from './binary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,30 +38,7 @@ export type DownloadResult = {
 // Binary resolution + auto-download
 // ---------------------------------------------------------------------------
 
-const IS_WIN = process.platform === 'win32';
-const EXE = IS_WIN ? '.exe' : '';
-
 let _ytdlpBin: string | null | undefined;
-
-function isExecutable(p: string): boolean {
-  try {
-    fs.accessSync(p, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Find a binary on PATH using `which` (Unix) or `where` (Windows). */
-function findOnPath(name: string): string | null {
-  const cmd = IS_WIN ? 'where' : 'which';
-  try {
-    const r = spawnSync(cmd, [name], { encoding: 'utf8' });
-    const cand = (r.stdout ?? '').split('\n')[0]?.trim() ?? '';
-    if (r.status === 0 && cand && isExecutable(cand)) return cand;
-  } catch { /* ignore */ }
-  return null;
-}
 
 function localBinPath(): string {
   return path.join(getDataDir(), `yt-dlp${EXE}`);
@@ -103,14 +84,7 @@ export async function ensureYtDlp(
 
   onProgress?.('yt-dlp not found — fetching latest release from GitHub…');
 
-  const apiUrl = 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest';
-  const res = await fetch(apiUrl, {
-    headers: { 'User-Agent': 'ytui/0.1' },
-  });
-  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-  const release = (await res.json()) as {
-    assets: { name: string; browser_download_url: string }[];
-  };
+  const release = await fetchLatestRelease('yt-dlp/yt-dlp');
 
   // Pick the right binary per platform/arch
   const platform = process.platform;
@@ -122,23 +96,16 @@ export async function ensureYtDlp(
   } else if (platform === 'darwin') {
     wantName = arch === 'arm64' ? 'yt-dlp_macos' : 'yt-dlp_macos_legacy';
   } else {
-    // Linux
     wantName = arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
   }
 
   const asset = release.assets.find((a) => a.name === wantName)
-    ?? release.assets.find((a) => a.name === 'yt-dlp_macos')  // fallback macOS
-    ?? release.assets.find((a) => a.name === 'yt-dlp');         // generic fallback
+    ?? release.assets.find((a) => a.name === 'yt-dlp_macos')
+    ?? release.assets.find((a) => a.name === 'yt-dlp');
 
   if (!asset) throw new Error(`Could not find a ${platform} yt-dlp binary in the release assets`);
 
-  onProgress?.(`Downloading ${asset.name}…`);
-  const binRes = await fetch(asset.browser_download_url);
-  if (!binRes.ok) throw new Error(`Download failed: ${binRes.status}`);
-
-  const dest = localBinPath();
-  const buf = await binRes.arrayBuffer();
-  fs.writeFileSync(dest, Buffer.from(buf), { mode: 0o755 });
+  await downloadAsset(asset, localBinPath(), onProgress);
 
   // Reset cache so next call picks it up.
   _ytdlpBin = undefined;

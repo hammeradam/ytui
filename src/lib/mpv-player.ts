@@ -15,6 +15,7 @@ import os from 'node:os';
 
 import { handleRawMessage, onEvent } from './mpv-adapter';
 import { loadConfig } from './config';
+import { isExecutable, findOnPath, fetchLatestRelease, downloadAsset } from './binary';
 
 // ---------------------------------------------------------------------------
 // mpv binary resolution + auto-download
@@ -23,10 +24,6 @@ import { loadConfig } from './config';
 const MPV_CACHE_DIR = path.join(os.homedir(), '.cache', 'ytui', 'mpv');
 const MPV_BIN = path.join(MPV_CACHE_DIR, 'mpv.app', 'Contents', 'MacOS', 'mpv');
 let _mpvBin: string | null | undefined;
-
-function isExecutable(p: string): boolean {
-  try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; }
-}
 
 function resolveMpvSystem(): string | null {
   const env = (process.env.MPV_BIN ?? '').trim();
@@ -43,11 +40,8 @@ function resolveMpvSystem(): string | null {
   }
 
   // Check PATH
-  try {
-    const r = Bun.spawnSync(process.platform === 'win32' ? ['where', 'mpv'] : ['which', 'mpv']);
-    const found = new TextDecoder().decode(r.stdout).split('\n')[0]?.trim() ?? '';
-    if (r.exitCode === 0 && found && isExecutable(found)) return found;
-  } catch { /* ignore */ }
+  const onPath = findOnPath('mpv');
+  if (onPath) return onPath;
 
   // Previously downloaded
   if (isExecutable(MPV_BIN)) return MPV_BIN;
@@ -69,12 +63,7 @@ export async function ensureMpv(
 
   onProgress?.('mpv not found — fetching latest release from GitHub…');
 
-  const apiUrl = 'https://api.github.com/repos/mpv-player/mpv/releases/latest';
-  const res = await fetch(apiUrl, { headers: { 'User-Agent': 'ytui/0.1' } });
-  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-  const release = (await res.json()) as {
-    assets: { name: string; browser_download_url: string }[];
-  };
+  const release = await fetchLatestRelease('mpv-player/mpv');
 
   // Release assets look like: mpv-v0.41.0-macos-26-arm.zip  (arm64)
   //                            mpv-v0.41.0-macos-26-x86_64.zip
@@ -85,19 +74,13 @@ export async function ensureMpv(
 
   if (!asset) throw new Error('Could not find a macOS mpv binary in the latest release assets.');
 
-  onProgress?.(`Downloading ${asset.name}…`);
-  const binRes = await fetch(asset.browser_download_url);
-  if (!binRes.ok) throw new Error(`Download failed: ${binRes.status}`);
-
-  const destDir = MPV_CACHE_DIR;
-  fs.mkdirSync(destDir, { recursive: true });
-  const tempZip = path.join(destDir, 'mpv.zip');
-  await Bun.write(tempZip, await binRes.arrayBuffer());
+  const tempZip = path.join(MPV_CACHE_DIR, 'mpv.zip');
+  await downloadAsset(asset, tempZip, onProgress);
 
   onProgress?.('Extracting…');
 
   // Step 1: unzip the outer .zip
-  const unzip = Bun.spawn(['unzip', '-o', '-q', tempZip, '-d', destDir], {
+  const unzip = Bun.spawn(['unzip', '-o', '-q', tempZip, '-d', MPV_CACHE_DIR], {
     stdout: 'ignore', stderr: 'pipe',
   });
   await unzip.exited;
@@ -108,10 +91,10 @@ export async function ensureMpv(
   fs.unlinkSync(tempZip);
 
   // Step 2: extract the inner mpv.tar.gz that lives inside the zip
-  const innerTar = fs.readdirSync(destDir).find((f) => f.endsWith('.tar.gz'));
+  const innerTar = fs.readdirSync(MPV_CACHE_DIR).find((f) => f.endsWith('.tar.gz'));
   if (!innerTar) throw new Error('Could not find inner mpv.tar.gz after unzip.');
-  const innerTarPath = path.join(destDir, innerTar);
-  const tar = Bun.spawn(['tar', 'xzf', innerTarPath, '-C', destDir], {
+  const innerTarPath = path.join(MPV_CACHE_DIR, innerTar);
+  const tar = Bun.spawn(['tar', 'xzf', innerTarPath, '-C', MPV_CACHE_DIR], {
     stdout: 'ignore', stderr: 'pipe',
   });
   await tar.exited;
