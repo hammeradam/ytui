@@ -314,10 +314,13 @@ export async function downloadAudio(
   const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' });
 
   let finalPath = '';
-  const decoder = new TextDecoder();
 
-  // yt-dlp writes [download] progress lines to stderr; --print filepath goes to stdout.
-  // Read both streams concurrently so progress fires while the download runs.
+  // When --print is used, yt-dlp sends ALL output (including [download] progress)
+
+  // When --print is used, yt-dlp sends ALL output (including [download] progress)
+  // to stdout. stderr only gets warnings/errors. Use separate decoders per stream.
+  const stdoutDecoder = new TextDecoder();
+  const stderrDecoder = new TextDecoder();
 
   async function readStdout(): Promise<void> {
     const reader = proc.stdout.getReader();
@@ -325,12 +328,19 @@ export async function downloadAudio(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buf += decoder.decode(value, { stream: true });
+      buf += stdoutDecoder.decode(value, { stream: true });
       const lines = buf.split('\n');
       buf = lines.pop() ?? '';
       for (const line of lines) {
         const t = line.trim();
         if (!t) continue;
+        // Progress lines: "[download]  42.3% of  3.45MiB at  1.23MiB/s ETA 00:01"
+        // Speed can be "Unknown B/s" (two tokens) so match everything up to " ETA "
+        const prog = t.match(/\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+(.+?)\s+ETA\s+(\S+)/);
+        if (prog) {
+          onProgress?.({ percent: parseFloat(prog[1]!), speed: prog[2]!, eta: prog[3]! });
+          continue;
+        }
         // --print after_move:filepath outputs the final path on stdout
         if (t.startsWith('/') || t.startsWith('~') || /^[A-Za-z]:[/\\]/.test(t)) {
           finalPath = t;
@@ -347,21 +357,10 @@ export async function downloadAudio(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
+      const chunk = stderrDecoder.decode(value, { stream: true });
       stderrText += chunk;
       buf += chunk;
-      const lines = buf.split('\n');
-      buf = lines.pop() ?? '';
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t) continue;
-        // Progress lines: "[download]  42.3% of  3.45MiB at  1.23MiB/s ETA 00:01"
-        // Speed can be "Unknown B/s" (two tokens) so match everything up to " ETA "
-        const prog = t.match(/\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+(.+?)\s+ETA\s+(\S+)/);
-        if (prog) {
-          onProgress?.({ percent: parseFloat(prog[1]!), speed: prog[2]!, eta: prog[3]! });
-        }
-      }
+      buf = buf.split('\n').pop() ?? '';
     }
   }
 
