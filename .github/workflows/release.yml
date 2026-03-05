@@ -182,6 +182,12 @@ jobs:
       - name: Mark binaries executable
         run: chmod +x dist/ytui-macos-arm64 dist/ytui-macos-x86_64 dist/ytui-linux-x86_64
 
+      - name: Package as tarballs
+        run: |
+          tar -czf dist/ytui-macos-arm64.tar.gz  -C dist ytui-macos-arm64
+          tar -czf dist/ytui-macos-x86_64.tar.gz -C dist ytui-macos-x86_64
+          tar -czf dist/ytui-linux-x86_64.tar.gz -C dist ytui-linux-x86_64
+
       - name: Configure git identity
         run: |
           git config user.name  "github-actions[bot]"
@@ -208,6 +214,6 @@ jobs:
           name: v${{ env.VERSION }}
           body: ${{ needs.version.outputs.changelog }}
           files: |
-            dist/ytui-macos-arm64
-            dist/ytui-macos-x86_64
-            dist/ytui-linux-x86_64
+            dist/ytui-macos-arm64.tar.gz
+            dist/ytui-macos-x86_64.tar.gz
+            dist/ytui-linux-x86_64.tar.gz

@@ -167,6 +167,9 @@ export async function searchYouTube(
       '--no-download',
       '--no-playlist',
       '--flat-playlist',
+      // Avoid JS-runtime dependency (throttling decryption) by using the
+      // YouTube iOS / mobile web client which does not require it.
+      '--extractor-args', 'youtube:player_client=ios,mweb',
     ],
     { stdout: 'pipe', stderr: 'pipe' },
   );
@@ -245,6 +248,9 @@ export async function downloadAudio(
     '--no-playlist',
     '-o', outputTemplate,
     '--print', 'after_move:filepath',
+    // Avoid JS-runtime dependency (throttling decryption) by using the
+    // YouTube iOS / mobile web client which does not require it.
+    '--extractor-args', 'youtube:player_client=ios,mweb',
   ];
 
   if (cfg.audioQuality !== 'best') {
@@ -321,7 +327,7 @@ export async function fetchVideoInfo(videoIdOrUrl: string): Promise<SearchResult
     : `https://www.youtube.com/watch?v=${videoIdOrUrl}`;
 
   const proc = Bun.spawn(
-    [bin, '--dump-json', '--no-download', url],
+    [bin, '--dump-json', '--no-download', '--extractor-args', 'youtube:player_client=ios,mweb', url],
     { stdout: 'pipe', stderr: 'pipe' },
   );
 
