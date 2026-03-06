@@ -38,11 +38,11 @@ export function HelpView(): React.ReactElement {
     null,
     // Equalizer
     ['e', 'Toggle equalizer panel'],
-    ['← / →', 'Select EQ band (when open)'],
-    ['↑ / ↓', 'Adjust gain (when open)'],
+    ['← / →', 'Select EQ band (when open, normal mode)'],
+    ['↑ / ↓', 'Adjust gain (when open, normal mode)'],
     ['p', 'Toggle preset list (when EQ open)'],
-    ['s', 'Save as "Quick Save" (when EQ open)'],
-    ['d', 'Delete first preset (when EQ open)'],
+    ['s', 'Save preset (in preset list mode)'],
+    ['d', 'Delete selected preset (in preset list mode)'],
     null,
     // Library actions (view-local)
     ['d', 'Delete / remove'],
