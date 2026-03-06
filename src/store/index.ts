@@ -28,6 +28,12 @@ export type ActiveView =
 
 export type RepeatMode = 'none' | 'one' | 'all';
 
+export type EqBand = {
+  freq: number; // Hz (e.g. 60, 200, 800, 3000, 12000)
+  label: string; // display name (e.g. "Bass", "Mid", "Treble")
+  gain: number; // dB (-12 to +12, typically)
+};
+
 export type AppState = {
   // Search
   searchQuery: string;
@@ -58,6 +64,9 @@ export type AppState = {
   statusMsg: string;
   /** True while a text input field in any view has keyboard focus. Suppresses global hotkeys. */
   inputFocused: boolean;
+  eqPanelOpen: boolean;
+  eqSelectedBand: number; // index of selected band (0-based)
+  eqBands: EqBand[]; // EQ bands state
 
   // Settings
   settings: Config;
@@ -107,6 +116,12 @@ export type AppState = {
   setStatusMsg: (msg: string) => void;
   setSettings: (c: Config) => void;
   setInputFocused: (v: boolean) => void;
+
+  // Actions — EQ
+  toggleEqPanel: () => void;
+  setEqBandGain: (bandIndex: number, gain: number) => void;
+  selectEqBand: (bandIndex: number) => void;
+  selectEqBandRelative: (delta: number) => void; // for left/right navigation
 };
 
 // ---------------------------------------------------------------------------
@@ -145,6 +160,15 @@ export const useStore = create<AppState>((set, get) => {
   activeView: 'search',
   statusMsg: '',
   inputFocused: true,
+  eqPanelOpen: false,
+  eqSelectedBand: 0,
+  eqBands: [
+    { freq: 60, label: 'Bass', gain: 0 },
+    { freq: 200, label: 'Low-Mid', gain: 0 },
+    { freq: 800, label: 'Mid', gain: 0 },
+    { freq: 3000, label: 'High-Mid', gain: 0 },
+    { freq: 12000, label: 'Treble', gain: 0 },
+  ],
 
   // Settings
   settings: loadConfig(),
@@ -446,5 +470,34 @@ export const useStore = create<AppState>((set, get) => {
     }
   },
   setSettings: (c) => set({ settings: c }),
+
+  // --- EQ actions ---
+  toggleEqPanel: () => {
+    const isOpen = get().eqPanelOpen;
+    set({ eqPanelOpen: !isOpen, eqSelectedBand: 0 });
+  },
+  setEqBandGain: (bandIndex, gain) => {
+    const bands = [...get().eqBands];
+    if (bandIndex >= 0 && bandIndex < bands.length) {
+      // Clamp to -12 to +12 dB
+      bands[bandIndex] = { ...bands[bandIndex]!, gain: Math.max(-12, Math.min(12, gain)) };
+      set({ eqBands: bands });
+      // Apply to player
+      void player.setAudioFilters(bands);
+    }
+  },
+  selectEqBand: (bandIndex) => {
+    if (bandIndex >= 0 && bandIndex < get().eqBands.length) {
+      set({ eqSelectedBand: bandIndex });
+    }
+  },
+  selectEqBandRelative: (delta) => {
+    const current = get().eqSelectedBand;
+    const next = current + delta;
+    const bands = get().eqBands;
+    if (next >= 0 && next < bands.length) {
+      set({ eqSelectedBand: next });
+    }
+  },
   });
 });

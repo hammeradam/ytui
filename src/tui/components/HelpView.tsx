@@ -36,6 +36,11 @@ export function HelpView(): React.ReactElement {
     [dk('toggleShuffle'), 'Toggle shuffle'],
     [dk('cycleRepeat'),   'Cycle repeat mode (off → one → all)'],
     null,
+    // Equalizer
+    ['e', 'Toggle equalizer panel'],
+    ['← / →', 'Select EQ band (when open)'],
+    ['↑ / ↓', 'Adjust gain (when open)'],
+    null,
     // Library actions (view-local)
     ['d', 'Delete / remove'],
     ['a', 'Add to playlist'],

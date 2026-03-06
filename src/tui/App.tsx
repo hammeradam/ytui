@@ -12,6 +12,7 @@ import { DownloadQueue } from './components/DownloadQueue';
 import { HelpView } from './components/HelpView';
 import { PlayerBar } from './components/PlayerBar';
 import { SettingsView } from './components/SettingsView';
+import { EqView } from './components/EqView';
 
 const VIEW_LABELS: Record<ActiveView, string> = {
   search: 'Search',
@@ -60,6 +61,14 @@ export function App(): React.ReactElement {
   const cycleRepeat = useStore((s) => s.cycleRepeat);
   const hotkeys = useStore((s) => s.settings.hotkeys);
 
+  // EQ state
+  const eqPanelOpen = useStore((s) => s.eqPanelOpen);
+  const toggleEqPanel = useStore((s) => s.toggleEqPanel);
+  const eqSelectedBand = useStore((s) => s.eqSelectedBand);
+  const eqBands = useStore((s) => s.eqBands);
+  const setEqBandGain = useStore((s) => s.setEqBandGain);
+  const selectEqBandRelative = useStore((s) => s.selectEqBandRelative);
+
   // Wire up downloader → store
   useEffect(() => {
     downloader.setCallbacks({
@@ -95,6 +104,40 @@ export function App(): React.ReactElement {
     if (matchHotkey(hotkeys.quit, input, key) && !key.ctrl) {
       player.destroy();
       exit();
+      return;
+    }
+
+    // EQ panel toggle (always available)
+    if (input === 'e') {
+      toggleEqPanel();
+      return;
+    }
+
+    // If EQ panel is open, handle EQ-specific controls
+    if (eqPanelOpen) {
+      if (key.leftArrow) {
+        selectEqBandRelative(-1);
+        return;
+      }
+      if (key.rightArrow) {
+        selectEqBandRelative(1);
+        return;
+      }
+      if (key.upArrow) {
+        const band = eqBands[eqSelectedBand];
+        if (band) {
+          setEqBandGain(eqSelectedBand, band.gain + 0.5);
+        }
+        return;
+      }
+      if (key.downArrow) {
+        const band = eqBands[eqSelectedBand];
+        if (band) {
+          setEqBandGain(eqSelectedBand, band.gain - 0.5);
+        }
+        return;
+      }
+      // All other keys are ignored while EQ panel is open (music controls disabled)
       return;
     }
 
@@ -170,14 +213,24 @@ export function App(): React.ReactElement {
         ))}
       </Box>
 
-      {/* Main content */}
-      <Box flexGrow={1} flexDirection="column" paddingX={1}>
-        {activeView === 'search' && <SearchView height={contentH} />}
-        {activeView === 'library' && <LibraryView height={contentH} />}
-        {activeView === 'playlists' && <PlaylistView height={contentH} />}
-        {activeView === 'queue' && <DownloadQueue />}
-        {activeView === 'settings' && <SettingsView />}
-        {activeView === 'help' && <HelpView />}
+      {/* Main content — flexes horizontally if EQ panel is open */}
+      <Box flexGrow={1} flexDirection={eqPanelOpen ? 'row' : 'column'} paddingX={1}>
+        {/* Primary view (left side or full width) */}
+        <Box flexDirection="column" flexGrow={1}>
+          {activeView === 'search' && <SearchView height={contentH} />}
+          {activeView === 'library' && <LibraryView height={contentH} />}
+          {activeView === 'playlists' && <PlaylistView height={contentH} />}
+          {activeView === 'queue' && <DownloadQueue />}
+          {activeView === 'settings' && <SettingsView />}
+          {activeView === 'help' && <HelpView />}
+        </Box>
+
+        {/* EQ panel on the right (if open) */}
+        {eqPanelOpen && (
+          <Box borderStyle="round" borderColor="yellow" marginLeft={1} width={35}>
+            <EqView />
+          </Box>
+        )}
       </Box>
 
       {/* Status bar */}

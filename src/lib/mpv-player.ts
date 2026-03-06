@@ -260,6 +260,31 @@ class MpvPlayer {
     return this.volume;
   }
 
+  setAudioFilters(bands: Array<{ freq: number; label: string; gain: number }>): void {
+    // Build mpv audio filter string for equalizer
+    // Format: "[equalizer=c=1:f=FREQ:w=BANDWIDTH:g=GAIN]"
+    // We'll use 1 octave bandwidth for most bands
+    if (!bands || bands.length === 0) {
+      this.ipc(['set_property', 'af', '']);
+      return;
+    }
+
+    // Filter out bands with zero gain to keep the filter chain clean
+    const activeBands = bands.filter(b => b.gain !== 0);
+    if (activeBands.length === 0) {
+      this.ipc(['set_property', 'af', '']);
+      return;
+    }
+
+    // Build equalizer filter string
+    // Example: [equalizer=c=1:f=60:w=0.5:g=-2,equalizer=c=1:f=200:w=0.5:g=0]
+    const filterChain = activeBands
+      .map(b => `[equalizer=c=1:f=${b.freq}:w=0.5:g=${b.gain}]`)
+      .join('');
+
+    this.ipc(['set_property', 'af', filterChain]);
+  }
+
   quit(): void {
     this.ipc(['quit']);
   }
