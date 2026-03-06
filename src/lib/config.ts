@@ -15,6 +15,17 @@ import { getDataDir } from '../db/index';
 export type AudioFormat  = 'm4a' | 'opus' | 'best';
 export type AudioQuality = 'best' | '256k' | '192k' | '128k';
 
+export type EqBandConfig = {
+  freq: number;
+  label: string;
+  gain: number;
+};
+
+export type EqPreset = {
+  name: string;
+  bands: EqBandConfig[];
+};
+
 /**
  * An action that can be bound to a hotkey.
  * Special keys are stored as words: 'space', 'left', 'right', 'up', 'down', 'enter', 'escape'.
@@ -59,6 +70,10 @@ export type Config = {
   youtubeApiKey: string;
   /** Keyboard shortcuts for each action. */
   hotkeys: Hotkeys;
+  /** Current EQ band settings. */
+  eqBands: EqBandConfig[];
+  /** Saved EQ presets. */
+  eqPresets: EqPreset[];
 };
 
 export const DEFAULT_HOTKEYS: Hotkeys = {
@@ -90,6 +105,45 @@ export const CONFIG_DEFAULTS: Config = {
   downloadDir:         '',
   youtubeApiKey:       '',
   hotkeys:             { ...DEFAULT_HOTKEYS },
+  eqBands: [
+    { freq: 60, label: 'Bass', gain: 0 },
+    { freq: 200, label: 'Low', gain: 0 },
+    { freq: 800, label: 'Mid', gain: 0 },
+    { freq: 3000, label: 'High', gain: 0 },
+    { freq: 12000, label: 'Treble', gain: 0 },
+  ],
+  eqPresets: [
+    {
+      name: 'Flat',
+      bands: [
+        { freq: 60, label: 'Bass', gain: 0 },
+        { freq: 200, label: 'Low', gain: 0 },
+        { freq: 800, label: 'Mid', gain: 0 },
+        { freq: 3000, label: 'High', gain: 0 },
+        { freq: 12000, label: 'Treble', gain: 0 },
+      ],
+    },
+    {
+      name: 'Bass Boost',
+      bands: [
+        { freq: 60, label: 'Bass', gain: 6 },
+        { freq: 200, label: 'Low', gain: 4 },
+        { freq: 800, label: 'Mid', gain: 0 },
+        { freq: 3000, label: 'High', gain: -2 },
+        { freq: 12000, label: 'Treble', gain: 0 },
+      ],
+    },
+    {
+      name: 'Bright',
+      bands: [
+        { freq: 60, label: 'Bass', gain: 0 },
+        { freq: 200, label: 'Low', gain: -2 },
+        { freq: 800, label: 'Mid', gain: 2 },
+        { freq: 3000, label: 'High', gain: 4 },
+        { freq: 12000, label: 'Treble', gain: 6 },
+      ],
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------

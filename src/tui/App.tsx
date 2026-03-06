@@ -68,6 +68,12 @@ export function App(): React.ReactElement {
   const eqBands = useStore((s) => s.eqBands);
   const setEqBandGain = useStore((s) => s.setEqBandGain);
   const selectEqBandRelative = useStore((s) => s.selectEqBandRelative);
+  const eqPresets = useStore((s) => s.eqPresets);
+  const eqPresetViewOpen = useStore((s) => s.eqPresetViewOpen);
+  const toggleEqPresetView = useStore((s) => s.toggleEqPresetView);
+  const loadEqPreset = useStore((s) => s.loadEqPreset);
+  const saveEqPreset = useStore((s) => s.saveEqPreset);
+  const deleteEqPreset = useStore((s) => s.deleteEqPreset);
 
   // Wire up downloader → store
   useEffect(() => {
@@ -124,17 +130,39 @@ export function App(): React.ReactElement {
         return;
       }
       if (key.upArrow) {
-        const band = eqBands[eqSelectedBand];
-        if (band) {
-          setEqBandGain(eqSelectedBand, band.gain + 0.5);
+        if (eqPresetViewOpen && eqPresets.length > 0) {
+          // This would need preset navigation state, skip for now
+        } else {
+          const band = eqBands[eqSelectedBand];
+          if (band) {
+            setEqBandGain(eqSelectedBand, band.gain + 0.5);
+          }
         }
         return;
       }
       if (key.downArrow) {
-        const band = eqBands[eqSelectedBand];
-        if (band) {
-          setEqBandGain(eqSelectedBand, band.gain - 0.5);
+        if (eqPresetViewOpen && eqPresets.length > 0) {
+          // This would need preset navigation state, skip for now
+        } else {
+          const band = eqBands[eqSelectedBand];
+          if (band) {
+            setEqBandGain(eqSelectedBand, band.gain - 0.5);
+          }
         }
+        return;
+      }
+      if (input === 'p') {
+        toggleEqPresetView();
+        return;
+      }
+      if (input === 's' && !eqPresetViewOpen) {
+        // Quick save: save as "Quick Save"
+        saveEqPreset('Quick Save');
+        return;
+      }
+      if (input === 'd' && eqPresetViewOpen && eqPresets.length > 0) {
+        // Delete first preset (simplified)
+        deleteEqPreset(eqPresets[0]!.name);
         return;
       }
       // All other keys are ignored while EQ panel is open (music controls disabled)

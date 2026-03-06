@@ -6,7 +6,7 @@ import { getDb, schema } from '../db/index';
 import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
-import { loadConfig, type Config } from '../lib/config';
+import { loadConfig, saveConfig, type Config, type EqBandConfig, type EqPreset } from '../lib/config';
 import { player } from '../lib/mpv-player';
 import { usePlayerStore } from './mpv-store';
 
@@ -28,11 +28,8 @@ export type ActiveView =
 
 export type RepeatMode = 'none' | 'one' | 'all';
 
-export type EqBand = {
-  freq: number; // Hz (e.g. 60, 200, 800, 3000, 12000)
-  label: string; // display name (e.g. "Bass", "Mid", "Treble")
-  gain: number; // dB (-12 to +12, typically)
-};
+// Re-export EqBandConfig from config for convenience
+export type EqBand = EqBandConfig;
 
 export type AppState = {
   // Search
@@ -59,69 +56,75 @@ export type AppState = {
   playlistTracks: Track[];
   playlistTrackCounts: Record<number, number>; // playlistId -> track count
 
-  // UI
-  activeView: ActiveView;
-  statusMsg: string;
-  /** True while a text input field in any view has keyboard focus. Suppresses global hotkeys. */
-  inputFocused: boolean;
-  eqPanelOpen: boolean;
-  eqSelectedBand: number; // index of selected band (0-based)
-  eqBands: EqBand[]; // EQ bands state
+   // UI
+   activeView: ActiveView;
+   statusMsg: string;
+   /** True while a text input field in any view has keyboard focus. Suppresses global hotkeys. */
+   inputFocused: boolean;
+   eqPanelOpen: boolean;
+   eqSelectedBand: number; // index of selected band (0-based)
+   eqBands: EqBand[]; // EQ bands state
+   eqPresets: EqPreset[]; // saved presets
+   eqPresetViewOpen: boolean; // preset selector panel open
 
-  // Settings
-  settings: Config;
+   // Settings
+   settings: Config;
 
-  // Actions — search
-  setSearchQuery: (q: string) => void;
-  setSearchResults: (r: SearchResult[]) => void;
-  setSearchLoading: (v: boolean) => void;
-  setSearchError: (e: string) => void;
+   // Actions — search
+   setSearchQuery: (q: string) => void;
+   setSearchResults: (r: SearchResult[]) => void;
+   setSearchLoading: (v: boolean) => void;
+   setSearchError: (e: string) => void;
 
-  // Actions — library
-  reloadTracks: () => Promise<void>;
-  deleteTrack: (trackId: string) => Promise<void>;
+   // Actions — library
+   reloadTracks: () => Promise<void>;
+   deleteTrack: (trackId: string) => Promise<void>;
 
-  // Actions — downloads
-  setDownloadQueue: (q: DownloadJob[]) => void;
+   // Actions — downloads
+   setDownloadQueue: (q: DownloadJob[]) => void;
 
-  // Actions — play queue
-  /** Start playing `track` within the given `context` list; auto-advances on track end. */
-  playFromContext: (track: Track, context: Track[]) => void;
-  /** Advance to next track (respects shuffle / repeat). Returns true if a track was started. */
-  playNext: () => boolean;
-  /** Go back to previous track. */
-  playPrev: () => void;
-  toggleShuffle: () => void;
-  cycleRepeat: () => void;
+   // Actions — play queue
+   /** Start playing `track` within the given `context` list; auto-advances on track end. */
+   playFromContext: (track: Track, context: Track[]) => void;
+   /** Advance to next track (respects shuffle / repeat). Returns true if a track was started. */
+   playNext: () => boolean;
+   /** Go back to previous track. */
+   playPrev: () => void;
+   toggleShuffle: () => void;
+   cycleRepeat: () => void;
 
-  // Actions — playlists
-  reloadPlaylists: () => Promise<void>;
-  setActivePlaylistId: (id: number | null) => void;
-  reloadPlaylistTracks: (playlistId: number) => Promise<void>;
-  createPlaylist: (name: string) => Promise<Playlist>;
-  deletePlaylist: (id: number) => Promise<void>;
-  addTrackToPlaylist: (playlistId: number, trackId: string) => Promise<void>;
-  removeTrackFromPlaylist: (
-    playlistId: number,
-    trackId: string,
-  ) => Promise<void>;
-  moveTrackInPlaylist: (
-    playlistId: number,
-    trackId: string,
-    direction: 'up' | 'down',
-  ) => Promise<void>;
+   // Actions — playlists
+   reloadPlaylists: () => Promise<void>;
+   setActivePlaylistId: (id: number | null) => void;
+   reloadPlaylistTracks: (playlistId: number) => Promise<void>;
+   createPlaylist: (name: string) => Promise<Playlist>;
+   deletePlaylist: (id: number) => Promise<void>;
+   addTrackToPlaylist: (playlistId: number, trackId: string) => Promise<void>;
+   removeTrackFromPlaylist: (
+     playlistId: number,
+     trackId: string,
+   ) => Promise<void>;
+   moveTrackInPlaylist: (
+     playlistId: number,
+     trackId: string,
+     direction: 'up' | 'down',
+   ) => Promise<void>;
 
-  // Actions — UI
-  setActiveView: (v: ActiveView) => void;
-  setStatusMsg: (msg: string) => void;
-  setSettings: (c: Config) => void;
-  setInputFocused: (v: boolean) => void;
+   // Actions — UI
+   setActiveView: (v: ActiveView) => void;
+   setStatusMsg: (msg: string) => void;
+   setSettings: (c: Config) => void;
+   setInputFocused: (v: boolean) => void;
 
-  // Actions — EQ
-  toggleEqPanel: () => void;
-  setEqBandGain: (bandIndex: number, gain: number) => void;
-  selectEqBand: (bandIndex: number) => void;
-  selectEqBandRelative: (delta: number) => void; // for left/right navigation
+   // Actions — EQ
+   toggleEqPanel: () => void;
+   setEqBandGain: (bandIndex: number, gain: number) => void;
+   selectEqBand: (bandIndex: number) => void;
+   selectEqBandRelative: (delta: number) => void; // for left/right navigation
+   toggleEqPresetView: () => void;
+   loadEqPreset: (presetName: string) => void;
+   saveEqPreset: (name: string) => void;
+   deleteEqPreset: (name: string) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -130,6 +133,7 @@ export type AppState = {
 
 export const useStore = create<AppState>((set, get) => {
   let statusTimer: ReturnType<typeof setTimeout> | null = null;
+  const config = loadConfig();
 
   return ({
   // Search
@@ -162,16 +166,12 @@ export const useStore = create<AppState>((set, get) => {
   inputFocused: true,
   eqPanelOpen: false,
   eqSelectedBand: 0,
-  eqBands: [
-    { freq: 60, label: 'Bass', gain: 0 },
-    { freq: 200, label: 'Low-Mid', gain: 0 },
-    { freq: 800, label: 'Mid', gain: 0 },
-    { freq: 3000, label: 'High-Mid', gain: 0 },
-    { freq: 12000, label: 'Treble', gain: 0 },
-  ],
+  eqBands: [...config.eqBands],
+  eqPresets: [...config.eqPresets],
+  eqPresetViewOpen: false,
 
   // Settings
-  settings: loadConfig(),
+  settings: config,
 
   // --- Search actions ---
   setSearchQuery: (q) => set({ searchQuery: q }),
@@ -474,14 +474,19 @@ export const useStore = create<AppState>((set, get) => {
   // --- EQ actions ---
   toggleEqPanel: () => {
     const isOpen = get().eqPanelOpen;
-    set({ eqPanelOpen: !isOpen, eqSelectedBand: 0 });
+    set({ eqPanelOpen: !isOpen, eqSelectedBand: 0, eqPresetViewOpen: false });
   },
   setEqBandGain: (bandIndex, gain) => {
     const bands = [...get().eqBands];
     if (bandIndex >= 0 && bandIndex < bands.length) {
       // Clamp to -12 to +12 dB
-      bands[bandIndex] = { ...bands[bandIndex]!, gain: Math.max(-12, Math.min(12, gain)) };
+      const clampedGain = Math.max(-12, Math.min(12, gain));
+      bands[bandIndex] = { ...bands[bandIndex]!, gain: clampedGain };
       set({ eqBands: bands });
+      // Persist to config
+      const cfg = get().settings;
+      const newConfig = { ...cfg, eqBands: bands };
+      saveConfig(newConfig);
       // Apply to player
       void player.setAudioFilters(bands);
     }
@@ -498,6 +503,48 @@ export const useStore = create<AppState>((set, get) => {
     if (next >= 0 && next < bands.length) {
       set({ eqSelectedBand: next });
     }
+  },
+  toggleEqPresetView: () => {
+    const isOpen = get().eqPresetViewOpen;
+    set({ eqPresetViewOpen: !isOpen });
+  },
+  loadEqPreset: (presetName) => {
+    const presets = get().eqPresets;
+    const preset = presets.find((p) => p.name === presetName);
+    if (preset) {
+      set({ eqBands: [...preset.bands] });
+      // Persist to config
+      const cfg = get().settings;
+      const newConfig = { ...cfg, eqBands: [...preset.bands] };
+      saveConfig(newConfig);
+      // Apply to player
+      void player.setAudioFilters(preset.bands);
+      get().setStatusMsg(`EQ preset loaded: ${presetName}`);
+    }
+  },
+  saveEqPreset: (name) => {
+    const bands = get().eqBands;
+    const presets = [...get().eqPresets];
+    // Remove if already exists
+    const idx = presets.findIndex((p) => p.name === name);
+    if (idx >= 0) presets.splice(idx, 1);
+    // Add new preset
+    presets.push({ name, bands: [...bands] });
+    set({ eqPresets: presets });
+    // Persist to config
+    const cfg = get().settings;
+    const newConfig = { ...cfg, eqPresets: presets };
+    saveConfig(newConfig);
+    get().setStatusMsg(`EQ preset saved: ${name}`);
+  },
+  deleteEqPreset: (name) => {
+    const presets = get().eqPresets.filter((p) => p.name !== name);
+    set({ eqPresets: presets });
+    // Persist to config
+    const cfg = get().settings;
+    const newConfig = { ...cfg, eqPresets: presets };
+    saveConfig(newConfig);
+    get().setStatusMsg(`EQ preset deleted: ${name}`);
   },
   });
 });

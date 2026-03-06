@@ -40,6 +40,9 @@ export function HelpView(): React.ReactElement {
     ['e', 'Toggle equalizer panel'],
     ['← / →', 'Select EQ band (when open)'],
     ['↑ / ↓', 'Adjust gain (when open)'],
+    ['p', 'Toggle preset list (when EQ open)'],
+    ['s', 'Save as "Quick Save" (when EQ open)'],
+    ['d', 'Delete first preset (when EQ open)'],
     null,
     // Library actions (view-local)
     ['d', 'Delete / remove'],

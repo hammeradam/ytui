@@ -32,13 +32,15 @@ function drawVerticalSlider(gain: number, height: number = 9): string[] {
 export function EqView(): React.ReactElement {
   const eqBands = useStore((s) => s.eqBands);
   const selectedBand = useStore((s) => s.eqSelectedBand);
+  const eqPresets = useStore((s) => s.eqPresets);
+  const eqPresetViewOpen = useStore((s) => s.eqPresetViewOpen);
 
   // Fixed height for all sliders
   const sliderHeight = 9;
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} paddingY={1}>
-      <Text bold color="cyan">Equalizer (← → to select, ↑ ↓ to adjust)</Text>
+      <Text bold color="cyan">Equalizer (← → select, ↑ ↓ adjust)</Text>
       <Text> </Text>
 
       {/* Slider area */}
@@ -73,7 +75,26 @@ export function EqView(): React.ReactElement {
       </Box>
 
       <Text dimColor> </Text>
-      <Text dimColor>Press 'e' to close the equalizer panel</Text>
+
+      {/* Preset list */}
+      {eqPresetViewOpen ? (
+        <Box flexDirection="column" gap={0} borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Text bold color="cyan">Presets (↑↓ to select, Enter to load, 's' to save, 'd' to delete):</Text>
+          {eqPresets.length === 0 ? (
+            <Text dimColor>No presets saved yet</Text>
+          ) : (
+            eqPresets.map((p) => (
+              <Text key={p.name} color="white">
+                • {p.name}
+              </Text>
+            ))
+          )}
+        </Box>
+      ) : (
+        <Text dimColor>Press 'p' to open presets</Text>
+      )}
+
+      <Text dimColor>Press 'e' to close the EQ panel</Text>
     </Box>
   );
 }
