@@ -34,6 +34,9 @@ export function EqView(): React.ReactElement {
   const selectedBand = useStore((s) => s.eqSelectedBand);
   const eqPresets = useStore((s) => s.eqPresets);
   const eqPresetViewOpen = useStore((s) => s.eqPresetViewOpen);
+  const eqPresetSelectedIndex = useStore((s) => s.eqPresetSelectedIndex);
+  const eqSavePresetMode = useStore((s) => s.eqSavePresetMode);
+  const eqPresetNameInput = useStore((s) => s.eqPresetNameInput);
 
   // Fixed height for all sliders
   const sliderHeight = 9;
@@ -76,16 +79,22 @@ export function EqView(): React.ReactElement {
 
       <Text dimColor> </Text>
 
-      {/* Preset list */}
-      {eqPresetViewOpen ? (
+      {/* Preset save mode */}
+      {eqSavePresetMode ? (
+        <Box flexDirection="column" gap={0} borderStyle="round" borderColor="yellow" paddingX={1}>
+          <Text bold color="yellow">Save Preset As:</Text>
+          <Text color="white">{'>>'} {eqPresetNameInput}_</Text>
+          <Text dimColor>Enter name, then press Return to save. Press Escape to cancel.</Text>
+        </Box>
+      ) : eqPresetViewOpen ? (
         <Box flexDirection="column" gap={0} borderStyle="round" borderColor="cyan" paddingX={1}>
           <Text bold color="cyan">Presets (↑↓ to select, Enter to load, 's' to save, 'd' to delete):</Text>
           {eqPresets.length === 0 ? (
             <Text dimColor>No presets saved yet</Text>
           ) : (
-            eqPresets.map((p) => (
-              <Text key={p.name} color="white">
-                • {p.name}
+            eqPresets.map((p, idx) => (
+              <Text key={p.name} color={eqPresetSelectedIndex === idx ? 'yellow' : 'white'}>
+                {eqPresetSelectedIndex === idx ? '> ' : '  '}{p.name}
               </Text>
             ))
           )}

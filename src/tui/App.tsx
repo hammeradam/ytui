@@ -70,9 +70,16 @@ export function App(): React.ReactElement {
   const selectEqBandRelative = useStore((s) => s.selectEqBandRelative);
   const eqPresets = useStore((s) => s.eqPresets);
   const eqPresetViewOpen = useStore((s) => s.eqPresetViewOpen);
+  const eqPresetSelectedIndex = useStore((s) => s.eqPresetSelectedIndex);
+  const eqSavePresetMode = useStore((s) => s.eqSavePresetMode);
   const toggleEqPresetView = useStore((s) => s.toggleEqPresetView);
+  const selectEqPresetRelative = useStore((s) => s.selectEqPresetRelative);
   const loadEqPreset = useStore((s) => s.loadEqPreset);
-  const saveEqPreset = useStore((s) => s.saveEqPreset);
+  const enterEqPresetSaveMode = useStore((s) => s.enterEqPresetSaveMode);
+  const cancelEqPresetSaveMode = useStore((s) => s.cancelEqPresetSaveMode);
+  const appendEqPresetNameInput = useStore((s) => s.appendEqPresetNameInput);
+  const backspaceEqPresetName = useStore((s) => s.backspaceEqPresetName);
+  const confirmEqPresetSave = useStore((s) => s.confirmEqPresetSave);
   const deleteEqPreset = useStore((s) => s.deleteEqPreset);
 
   // Wire up downloader → store
@@ -121,50 +128,84 @@ export function App(): React.ReactElement {
 
     // If EQ panel is open, handle EQ-specific controls
     if (eqPanelOpen) {
-      if (key.leftArrow) {
-        selectEqBandRelative(-1);
+      // If in preset save mode, handle text input
+      if (eqSavePresetMode) {
+        if (key.return) {
+          confirmEqPresetSave();
+          return;
+        }
+        if (key.escape) {
+          cancelEqPresetSaveMode();
+          return;
+        }
+        if (key.backspace) {
+          backspaceEqPresetName();
+          return;
+        }
+        if (input && input.length === 1 && /[a-zA-Z0-9\s\-_.]/.test(input)) {
+          appendEqPresetNameInput(input);
+          return;
+        }
+        // All other input ignored during save mode
         return;
       }
-      if (key.rightArrow) {
-        selectEqBandRelative(1);
-        return;
-      }
-      if (key.upArrow) {
-        if (eqPresetViewOpen && eqPresets.length > 0) {
-          // This would need preset navigation state, skip for now
-        } else {
+
+      // If preset view is open, handle preset selection
+      if (eqPresetViewOpen) {
+        if (key.upArrow) {
+          selectEqPresetRelative(-1);
+          return;
+        }
+        if (key.downArrow) {
+          selectEqPresetRelative(1);
+          return;
+        }
+        if (key.return && eqPresets.length > 0) {
+          loadEqPreset(eqPresets[eqPresetSelectedIndex]!.name);
+          return;
+        }
+        if (input === 's') {
+          enterEqPresetSaveMode();
+          return;
+        }
+        if (input === 'd' && eqPresets.length > 0) {
+          deleteEqPreset(eqPresets[eqPresetSelectedIndex]!.name);
+          return;
+        }
+        if (input === 'p') {
+          toggleEqPresetView();
+          return;
+        }
+      } else {
+        // Band adjustment mode
+        if (key.leftArrow) {
+          selectEqBandRelative(-1);
+          return;
+        }
+        if (key.rightArrow) {
+          selectEqBandRelative(1);
+          return;
+        }
+        if (key.upArrow) {
           const band = eqBands[eqSelectedBand];
           if (band) {
             setEqBandGain(eqSelectedBand, band.gain + 0.5);
           }
+          return;
         }
-        return;
-      }
-      if (key.downArrow) {
-        if (eqPresetViewOpen && eqPresets.length > 0) {
-          // This would need preset navigation state, skip for now
-        } else {
+        if (key.downArrow) {
           const band = eqBands[eqSelectedBand];
           if (band) {
             setEqBandGain(eqSelectedBand, band.gain - 0.5);
           }
+          return;
         }
-        return;
+        if (input === 'p') {
+          toggleEqPresetView();
+          return;
+        }
       }
-      if (input === 'p') {
-        toggleEqPresetView();
-        return;
-      }
-      if (input === 's' && !eqPresetViewOpen) {
-        // Quick save: save as "Quick Save"
-        saveEqPreset('Quick Save');
-        return;
-      }
-      if (input === 'd' && eqPresetViewOpen && eqPresets.length > 0) {
-        // Delete first preset (simplified)
-        deleteEqPreset(eqPresets[0]!.name);
-        return;
-      }
+
       // All other keys are ignored while EQ panel is open (music controls disabled)
       return;
     }

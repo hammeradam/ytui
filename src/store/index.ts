@@ -66,6 +66,9 @@ export type AppState = {
    eqBands: EqBand[]; // EQ bands state
    eqPresets: EqPreset[]; // saved presets
    eqPresetViewOpen: boolean; // preset selector panel open
+   eqPresetSelectedIndex: number; // index of selected preset in list
+   eqSavePresetMode: boolean; // true when entering preset name
+   eqPresetNameInput: string; // input buffer for saving preset
 
    // Settings
    settings: Config;
@@ -122,8 +125,13 @@ export type AppState = {
    selectEqBand: (bandIndex: number) => void;
    selectEqBandRelative: (delta: number) => void; // for left/right navigation
    toggleEqPresetView: () => void;
+   selectEqPresetRelative: (delta: number) => void; // for up/down in preset list
    loadEqPreset: (presetName: string) => void;
-   saveEqPreset: (name: string) => void;
+   enterEqPresetSaveMode: () => void;
+   cancelEqPresetSaveMode: () => void;
+   appendEqPresetNameInput: (char: string) => void;
+   backspaceEqPresetName: () => void;
+   confirmEqPresetSave: () => void;
    deleteEqPreset: (name: string) => void;
 };
 
@@ -169,6 +177,9 @@ export const useStore = create<AppState>((set, get) => {
   eqBands: [...config.eqBands],
   eqPresets: [...config.eqPresets],
   eqPresetViewOpen: false,
+  eqPresetSelectedIndex: 0,
+  eqSavePresetMode: false,
+  eqPresetNameInput: '',
 
   // Settings
   settings: config,
@@ -474,7 +485,13 @@ export const useStore = create<AppState>((set, get) => {
   // --- EQ actions ---
   toggleEqPanel: () => {
     const isOpen = get().eqPanelOpen;
-    set({ eqPanelOpen: !isOpen, eqSelectedBand: 0, eqPresetViewOpen: false });
+    set({
+      eqPanelOpen: !isOpen,
+      eqSelectedBand: 0,
+      eqPresetViewOpen: false,
+      eqSavePresetMode: false,
+      eqPresetNameInput: '',
+    });
   },
   setEqBandGain: (bandIndex, gain) => {
     const bands = [...get().eqBands];
@@ -506,7 +523,15 @@ export const useStore = create<AppState>((set, get) => {
   },
   toggleEqPresetView: () => {
     const isOpen = get().eqPresetViewOpen;
-    set({ eqPresetViewOpen: !isOpen });
+    set({ eqPresetViewOpen: !isOpen, eqPresetSelectedIndex: 0, eqSavePresetMode: false });
+  },
+  selectEqPresetRelative: (delta) => {
+    const current = get().eqPresetSelectedIndex;
+    const presets = get().eqPresets;
+    const next = current + delta;
+    if (next >= 0 && next < presets.length) {
+      set({ eqPresetSelectedIndex: next });
+    }
   },
   loadEqPreset: (presetName) => {
     const presets = get().eqPresets;
@@ -522,7 +547,28 @@ export const useStore = create<AppState>((set, get) => {
       get().setStatusMsg(`EQ preset loaded: ${presetName}`);
     }
   },
-  saveEqPreset: (name) => {
+  enterEqPresetSaveMode: () => {
+    set({ eqSavePresetMode: true, eqPresetNameInput: '' });
+  },
+  cancelEqPresetSaveMode: () => {
+    set({ eqSavePresetMode: false, eqPresetNameInput: '' });
+  },
+  appendEqPresetNameInput: (char) => {
+    const current = get().eqPresetNameInput;
+    if (current.length < 30) {
+      set({ eqPresetNameInput: current + char });
+    }
+  },
+  backspaceEqPresetName: () => {
+    const current = get().eqPresetNameInput;
+    set({ eqPresetNameInput: current.slice(0, -1) });
+  },
+  confirmEqPresetSave: () => {
+    const name = get().eqPresetNameInput.trim();
+    if (!name) {
+      get().setStatusMsg('Preset name cannot be empty');
+      return;
+    }
     const bands = get().eqBands;
     const presets = [...get().eqPresets];
     // Remove if already exists
@@ -530,7 +576,7 @@ export const useStore = create<AppState>((set, get) => {
     if (idx >= 0) presets.splice(idx, 1);
     // Add new preset
     presets.push({ name, bands: [...bands] });
-    set({ eqPresets: presets });
+    set({ eqPresets: presets, eqSavePresetMode: false, eqPresetNameInput: '' });
     // Persist to config
     const cfg = get().settings;
     const newConfig = { ...cfg, eqPresets: presets };
