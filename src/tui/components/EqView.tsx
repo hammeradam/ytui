@@ -29,6 +29,10 @@ function drawVerticalSlider(gain: number, height: number = 9): string[] {
   return bars;
 }
 
+function displayGain(gain: number): string {
+  return gain > 0 ? `+${gain.toFixed(1)} dB` : `${gain.toFixed(1)} dB`;
+}
+
 export function EqView(): React.ReactElement {
   const eqBands = useStore((s) => s.eqBands);
   const selectedBand = useStore((s) => s.eqSelectedBand);
@@ -44,34 +48,39 @@ export function EqView(): React.ReactElement {
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} paddingY={1}>
       <Text bold color="cyan">Equalizer (← → select, ↑ ↓ adjust)</Text>
-      <Text> </Text>
 
       {/* Slider area */}
-      <Box gap={1} alignItems="flex-end">
+      <Box gap={1} alignItems="flex-start">
         {eqBands.map((band, idx) => {
           const sliderLines = drawVerticalSlider(band.gain, sliderHeight);
+
           return (
             <Box
               key={idx}
               flexDirection="column"
-              alignItems="center"
+              width={13}
+              flexShrink={0}
               borderStyle="round"
               borderColor={selectedBand === idx ? 'yellow' : 'gray'}
             >
-              {/* Slider bars */}
-              <Box flexDirection="column" marginBottom={1}>
+              <Box flexDirection="column"  paddingBottom={1}>
                 {sliderLines.map((line, i) => (
-                  <Text key={i}>{line}</Text>
+                  <Box key={i} justifyContent="center">
+                    <Text>{line}</Text>
+                  </Box>
                 ))}
               </Box>
 
-              {/* Label and value */}
-              <Text color={selectedBand === idx ? 'yellow' : 'white'} bold={selectedBand === idx}>
-                {band.label}
-              </Text>
-              <Text color={selectedBand === idx ? 'yellow' : 'gray'} dimColor={selectedBand !== idx}>
-                {band.gain > 0 ? '+' : ''}{band.gain.toFixed(1)} dB
-              </Text>
+              <Box justifyContent="center">
+                <Text color={selectedBand === idx ? 'yellow' : 'gray'} dimColor={selectedBand !== idx}>
+                  {displayGain(band.gain)}
+                </Text>
+              </Box>
+              <Box justifyContent="center">
+                <Text color={selectedBand === idx ? 'yellow' : 'gray'} dimColor={selectedBand !== idx}>
+                  {band.label}
+                </Text>
+              </Box>
             </Box>
           );
         })}

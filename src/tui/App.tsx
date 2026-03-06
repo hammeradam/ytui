@@ -296,7 +296,7 @@ export function App(): React.ReactElement {
 
         {/* EQ panel on the right (if open) */}
         {eqPanelOpen && (
-          <Box borderStyle="round" borderColor="yellow" marginLeft={1} width={35}>
+          <Box borderStyle="round" borderColor="yellow" marginLeft={1}>
             <EqView />
           </Box>
         )}
