@@ -81,6 +81,7 @@ export function App(): React.ReactElement {
   const backspaceEqPresetName = useStore((s) => s.backspaceEqPresetName);
   const confirmEqPresetSave = useStore((s) => s.confirmEqPresetSave);
   const deleteEqPreset = useStore((s) => s.deleteEqPreset);
+  const reloadEqPresets = useStore((s) => s.reloadEqPresets);
 
   // Wire up downloader → store
   useEffect(() => {
@@ -104,7 +105,8 @@ export function App(): React.ReactElement {
   useEffect(() => {
     void reloadTracks();
     void reloadPlaylists();
-  }, [reloadTracks, reloadPlaylists]);
+    void reloadEqPresets();
+  }, [reloadTracks, reloadPlaylists, reloadEqPresets]);
 
   // Global keybindings
   useInput((input, key) => {
@@ -131,7 +133,7 @@ export function App(): React.ReactElement {
       // If in preset save mode, handle text input
       if (eqSavePresetMode) {
         if (key.return) {
-          confirmEqPresetSave();
+          void confirmEqPresetSave();
           return;
         }
         if (key.escape) {
@@ -169,7 +171,7 @@ export function App(): React.ReactElement {
           return;
         }
         if (input === 'd' && eqPresets.length > 0) {
-          deleteEqPreset(eqPresets[eqPresetSelectedIndex]!.name);
+          void deleteEqPreset(eqPresets[eqPresetSelectedIndex]!.name);
           return;
         }
         if (input === 'p') {

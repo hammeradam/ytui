@@ -50,6 +50,16 @@ export const playlistTracksRelations = relations(playlistTracks, ({ one }) => ({
   }),
 }));
 
+export const eqPresets = sqliteTable('eq_presets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+  /** JSON-serialised EqBandConfig[] */
+  bandsJson: text('bands_json').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export type EqPresetRow = typeof eqPresets.$inferSelect;
+
 export type Track = typeof tracks.$inferSelect;
 export type NewTrack = typeof tracks.$inferInsert;
 export type Playlist = typeof playlists.$inferSelect;

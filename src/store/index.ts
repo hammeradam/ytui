@@ -6,7 +6,7 @@ import { getDb, schema } from '../db/index';
 import type { Track, Playlist } from '../db/schema';
 import type { SearchResult } from '../lib/ytdlp';
 import type { DownloadJob } from '../lib/downloader';
-import { loadConfig, saveConfig, type Config, type EqBandConfig, type EqPreset } from '../lib/config';
+import { loadConfig, saveConfig, type Config, type EqBandConfig } from '../lib/config';
 import { player } from '../lib/mpv-player';
 import { usePlayerStore } from './mpv-store';
 
@@ -30,6 +30,13 @@ export type RepeatMode = 'none' | 'one' | 'all';
 
 // Re-export EqBandConfig from config for convenience
 export type EqBand = EqBandConfig;
+
+export type EqPreset = {
+  name: string;
+  bands: EqBandConfig[];
+};
+
+// Built-in presets are seeded into the DB by openDb() on first run.
 
 export type AppState = {
   // Search
@@ -131,8 +138,9 @@ export type AppState = {
    cancelEqPresetSaveMode: () => void;
    appendEqPresetNameInput: (char: string) => void;
    backspaceEqPresetName: () => void;
-   confirmEqPresetSave: () => void;
-   deleteEqPreset: (name: string) => void;
+   confirmEqPresetSave: () => Promise<void>;
+   deleteEqPreset: (name: string) => Promise<void>;
+   reloadEqPresets: () => Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -175,7 +183,7 @@ export const useStore = create<AppState>((set, get) => {
   eqPanelOpen: false,
   eqSelectedBand: 0,
   eqBands: [...config.eqBands],
-  eqPresets: [...config.eqPresets],
+  eqPresets: [],
   eqPresetViewOpen: false,
   eqPresetSelectedIndex: 0,
   eqSavePresetMode: false,
@@ -563,34 +571,42 @@ export const useStore = create<AppState>((set, get) => {
     const current = get().eqPresetNameInput;
     set({ eqPresetNameInput: current.slice(0, -1) });
   },
-  confirmEqPresetSave: () => {
+  confirmEqPresetSave: async () => {
     const name = get().eqPresetNameInput.trim();
     if (!name) {
       get().setStatusMsg('Preset name cannot be empty');
       return;
     }
     const bands = get().eqBands;
-    const presets = [...get().eqPresets];
-    // Remove if already exists
-    const idx = presets.findIndex((p) => p.name === name);
-    if (idx >= 0) presets.splice(idx, 1);
-    // Add new preset
-    presets.push({ name, bands: [...bands] });
-    set({ eqPresets: presets, eqSavePresetMode: false, eqPresetNameInput: '' });
-    // Persist to config
-    const cfg = get().settings;
-    const newConfig = { ...cfg, eqPresets: presets };
-    saveConfig(newConfig);
+    const db = getDb();
+    await db
+      .insert(schema.eqPresets)
+      .values({ name, bandsJson: JSON.stringify(bands), createdAt: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: schema.eqPresets.name,
+        set: { bandsJson: JSON.stringify(bands) },
+      });
+    set({ eqSavePresetMode: false, eqPresetNameInput: '' });
+    await get().reloadEqPresets();
     get().setStatusMsg(`EQ preset saved: ${name}`);
   },
-  deleteEqPreset: (name) => {
-    const presets = get().eqPresets.filter((p) => p.name !== name);
-    set({ eqPresets: presets });
-    // Persist to config
-    const cfg = get().settings;
-    const newConfig = { ...cfg, eqPresets: presets };
-    saveConfig(newConfig);
+  deleteEqPreset: async (name) => {
+    const db = getDb();
+    await db.delete(schema.eqPresets).where(eq(schema.eqPresets.name, name));
+    await get().reloadEqPresets();
     get().setStatusMsg(`EQ preset deleted: ${name}`);
+  },
+  reloadEqPresets: async () => {
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(schema.eqPresets)
+      .orderBy(asc(schema.eqPresets.createdAt));
+    const presets: EqPreset[] = rows.map((r) => ({
+      name: r.name,
+      bands: JSON.parse(r.bandsJson) as EqBandConfig[],
+    }));
+    set({ eqPresets: presets });
   },
   });
 });
